@@ -10,6 +10,13 @@
     <title>{% block title %}{{ site.title }}{% endblock %}</title>
     <meta name="description" content="{% block description %}{{ site.description }}{% endblock %}">
     {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
+    {# noindex: 404, пустые разделы нового сообщества (build.py, thin_pages)
+       и весь сайт, пока в site.yml `published: false`. #}
+    {% if noindex or not site.published %}<meta name="robots" content="noindex">{% endif %}
+    {# Подтверждение прав в Google Search Console и Яндекс Вебмастере —
+       коды из site.yml (`verification`), у каждого домена свои. #}
+    {% if site.verification.google %}<meta name="google-site-verification" content="{{ site.verification.google }}">{% endif %}
+    {% if site.verification.yandex %}<meta name="yandex-verification" content="{{ site.verification.yandex }}">{% endif %}
     <!-- Open Graph -->
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
     <meta property="og:title" content="{{ self.title() }}">
@@ -80,6 +87,13 @@
                     <a href="{{ base }}/venues/">Для площадок</a>
                     <a href="{{ base }}/about/">О сообществе</a>
                 </div>
+                {% if site.communities %}
+                <div class="footer__links footer__communities">
+                    {% for other in site.communities %}
+                    <a href="{{ other.url }}" title="QA-митапы: {{ other.city }}">{{ other.title }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
             <div class="footer__col">
                 {# Real brand marks instead of the typographic ✉ ▶ ★ that used

@@ -148,12 +148,35 @@ def load_site(site_id: str | None = None) -> Site:
             f"{rel(config_file)}: нет обязательных полей {', '.join(missing)}"
         )
     config.setdefault("links", {})
+    # Готов ли сайт к поисковикам и к ссылкам с сайтов других сообществ.
+    # Пока false — все страницы с noindex, в robots.txt нет sitemap, а
+    # соседи на него не ссылаются. См. SITES.md, раздел «SEO».
+    config["published"] = bool(config.get("published", True))
+    config["alternate_names"] = list(config.get("alternate_names") or [])
+    config["verification"] = dict(config.get("verification") or {})
+    config["seo"] = dict(config.get("seo") or {})
     config.setdefault("city_genitive", config["city"])
     config.setdefault("city_prepositional", config["city"])
     config.setdefault(
         "description", f"QA-сообщество {config['city_genitive']} — митапы по тестированию"
     )
     return Site(id=site_id, dir=directory, config=config)
+
+
+def other_communities(site_id: str) -> list[Site]:
+    """Остальные опубликованные сообщества — на них можно ставить ссылки.
+
+    Адрес берётся из site.yml, а не из SITE_URL: переменная окружения
+    подменяет адрес собираемого сайта (стенд), но не соседей.
+    """
+    result = []
+    for other_id in available_sites():
+        if other_id == site_id:
+            continue
+        other = load_site(other_id)
+        if other.config["published"]:
+            result.append(other)
+    return result
 
 
 def resolve_sites(names: list[str] | None, all_by_default: bool = True) -> list[Site]:

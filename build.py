@@ -877,7 +877,7 @@ def sitemap_lastmod(values, today: date) -> str:
     return min(max(known), today).isoformat()
 
 
-def generate_sitemap(events, speakers, pages, tags=()):
+def generate_sitemap(events, speakers, pages, tags=(), exclude=()):
     """Generate sitemap.xml for search engines.
 
     lastmod считается из контента, а не из mtime файлов: в CI репозиторий
@@ -988,6 +988,11 @@ def generate_sitemap(events, speakers, pages, tags=()):
             "priority": "0.5",
         })
 
+    # Страницы без содержания (пустой список спикеров у нового сообщества)
+    # отдаются с noindex — звать на них краулера незачем.
+    excluded = {f"{SITE_URL}{path}" for path in exclude}
+    urls = [u for u in urls if u["loc"] not in excluded]
+
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     for u in urls:
@@ -1000,6 +1005,36 @@ def generate_sitemap(events, speakers, pages, tags=()):
         lines.append("  </url>")
     lines.append("</urlset>")
     return "\n".join(lines)
+
+
+def speaker_profiles_elsewhere(site: "sites.Site") -> dict[str, list[dict]]:
+    """Имя спикера → его профили у других опубликованных сообществ."""
+    found: dict[str, list[dict]] = {}
+    for other in sites.other_communities(site.id):
+        base = other.config["url"].rstrip("/")
+        for path in sorted(other.speakers_dir.glob("*.md")):
+            name = str(parse_md_file(path).get("name") or "").strip()
+            if name:
+                found.setdefault(name, []).append({
+                    "community": other.config["title"],
+                    "url": f"{base}/speakers/{path.stem}/",
+                })
+    return found
+
+
+def speaker_same_as(speaker: dict) -> list[str]:
+    """schema.org sameAs спикера: его соцсети и профили у других сообществ."""
+    links = []
+    if speaker.get("telegram"):
+        links.append(f"https://t.me/{speaker['telegram']}")
+    if speaker.get("github"):
+        links.append(f"https://github.com/{speaker['github']}")
+    if speaker.get("twitter"):
+        links.append(f"https://twitter.com/{speaker['twitter']}")
+    if str(speaker.get("website") or "").startswith(("http://", "https://")):
+        links.append(speaker["website"])
+    links += [profile["url"] for profile in speaker.get("elsewhere") or []]
+    return links
 
 
 def site_context(site: "sites.Site") -> dict:
@@ -1019,6 +1054,23 @@ def site_context(site: "sites.Site") -> dict:
         "city_genitive": config["city_genitive"],
         "city_prepositional": config["city_prepositional"],
         "since": since if since and since < year else None,
+        "published": config["published"],
+        "verification": config["verification"],
+        # Название сообщества в других написаниях — schema.org alternateName:
+        # «MoscowQA» и «Moscow QA» поисковик должен считать одним и тем же.
+        "alternate_names": [
+            name for name in dict.fromkeys([config["brand"], *config["alternate_names"]])
+            if name != config["title"]
+        ],
+        "seo": config["seo"],
+        "logo_url": f"{SITE_URL}/static/images/logo.png",
+        # Соседние сообщества для подвала: перекрёстные ссылки между сайтами
+        # одной сети — и навигация, и сигнал поисковику, что сайты связаны.
+        "communities": [
+            {"title": other.config["title"], "url": other.config["url"].rstrip("/") + "/",
+             "city": other.config["city"]}
+            for other in sites.other_communities(site.id)
+        ],
         "year": year,
         "telegram": TELEGRAM_URL,
         "youtube": YOUTUBE_URL,
@@ -1085,6 +1137,14 @@ def build(site: "sites.Site | str | None" = None):
 
     # Topic tags: talks grouped by the `tags` of their front matter.
     tags = collect_tags(events)
+
+    # Тот же человек у соседнего сообщества: ссылка «Также выступает на…» и
+    # schema.org sameAs. Профили на двух доменах — не дубль, а две стороны
+    # одного человека, и разметка говорит об этом прямо.
+    elsewhere = speaker_profiles_elsewhere(site)
+    for speaker in speakers:
+        speaker["elsewhere"] = elsewhere.get(speaker["name"], [])
+        speaker["same_as"] = speaker_same_as(speaker)
 
     # Link-preview covers. An event with its own `cover` keeps it; the rest
     # get a card drawn from their front matter, and `event["og_image"]` is
@@ -1189,9 +1249,16 @@ def build(site: "sites.Site | str | None" = None):
             talk_dir.mkdir(parents=True, exist_ok=True)
             (talk_dir / "index.html").write_text(html, encoding="utf-8")
 
+    # Пустые разделы нового сообщества: страница есть (на неё ведёт меню),
+    # но индексировать нечего — noindex и мимо sitemap.
+    thin_pages = set()
+    if not speakers:
+        thin_pages.add("/speakers/")
+
     # Build speakers list page
     tpl = env.get_template("speakers.html")
-    html = tpl.render(**common, canonical_url=f"{SITE_URL}/speakers/")
+    html = tpl.render(**common, canonical_url=f"{SITE_URL}/speakers/",
+                      noindex="/speakers/" in thin_pages)
     (OUTPUT_DIR / "speakers").mkdir(exist_ok=True)
     (OUTPUT_DIR / "speakers" / "index.html").write_text(html, encoding="utf-8")
 
@@ -1220,9 +1287,12 @@ def build(site: "sites.Site | str | None" = None):
     speakers_with_talks = sum(
         1 for s in speakers if s.get("external_talks")
     )
+    if not all_talks:
+        thin_pages.add("/presentations/")
     tpl = env.get_template("presentations.html")
     html = tpl.render(
         **common,
+        noindex="/presentations/" in thin_pages,
         all_talks=all_talks,
         total_count=len(all_talks),
         speakers_with_talks=speakers_with_talks,
@@ -1267,7 +1337,12 @@ def build(site: "sites.Site | str | None" = None):
             continue
         tpl = env.get_template(template_name)
         canonical = f"{SITE_URL}/{slug}/"
-        html = tpl.render(**common, page=page, canonical_url=canonical)
+        if slug == "organizers" and not (
+            page.get("organizers") or page.get("program_committee")
+        ):
+            thin_pages.add(f"/{slug}/")
+        html = tpl.render(**common, page=page, canonical_url=canonical,
+                          noindex=f"/{slug}/" in thin_pages)
         page_dir = OUTPUT_DIR / slug
         page_dir.mkdir(parents=True, exist_ok=True)
         (page_dir / "index.html").write_text(html, encoding="utf-8")
@@ -1280,11 +1355,15 @@ def build(site: "sites.Site | str | None" = None):
     )
 
     # Generate sitemap.xml
-    sitemap = generate_sitemap(events, speakers, pages, tags)
+    sitemap = generate_sitemap(events, speakers, pages, tags, exclude=thin_pages)
     (OUTPUT_DIR / "sitemap.xml").write_text(sitemap, encoding="utf-8")
 
-    # Generate robots.txt
-    robots = f"User-agent: *\nAllow: /\n\nSitemap: {SITE_URL}/sitemap.xml\n"
+    # Generate robots.txt. Неопубликованный сайт не закрываем Disallow:
+    # тогда краулер не увидел бы noindex на страницах. Просто не зовём его
+    # в sitemap.
+    robots = "User-agent: *\nAllow: /\n"
+    if site_data["published"]:
+        robots += f"\nSitemap: {SITE_URL}/sitemap.xml\n"
     (OUTPUT_DIR / "robots.txt").write_text(robots, encoding="utf-8")
 
     talk_count = sum(len(e.get("talks", [])) for e in events)
@@ -1306,6 +1385,10 @@ def build(site: "sites.Site | str | None" = None):
               f"list widget {'on' if site_data['timepad_widget']['list_enabled'] else 'off'}")
     else:
         print("Timepad widget: disabled (TIMEPAD_WIDGET=0)")
+    if not site_data["published"]:
+        print("SEO: published: false — все страницы с noindex, sitemap не объявлен")
+    elif thin_pages:
+        print(f"SEO: noindex для пустых разделов: {', '.join(sorted(thin_pages))}")
     print(f"Output: {site.rel(OUTPUT_DIR)}/")
 
 

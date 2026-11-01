@@ -1336,6 +1336,16 @@ img { max-width: 100%; height: auto; }
     color: var(--pink);
 }
 
+/* Соседние сообщества сети (site.yml других сайтов, `published: true`). */
+.footer__communities {
+    margin-top: 0.75rem;
+}
+
+.speaker-detail__elsewhere {
+    margin-top: 1rem;
+    font-size: 0.95rem;
+}
+
 .footer__social {
     display: flex;
     gap: 0.75rem;

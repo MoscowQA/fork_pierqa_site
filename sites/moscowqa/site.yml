@@ -22,6 +22,22 @@ links:
   youtube: "https://www.youtube.com/@moscowqa"
   timepad: "https://moscowqa.timepad.ru"
 
+# --- SEO (см. SITES.md, раздел «SEO») ---------------------------------------
+# Сайт готов к поисковикам и к ссылкам с сайтов других сообществ.
+published: true
+# Другие написания названия — schema.org alternateName. brand добавляется сам.
+alternate_names: ["Москва QA"]
+# Коды подтверждения прав из Google Search Console и Яндекс Вебмастера
+# (только content из <meta>). Если права уже подтверждены другим способом
+# (DNS, файл) — оставьте пустыми.
+verification:
+  google: ""
+  yandex: ""
+# Свои заголовок и описание главной. Пусто — собираются из city_* выше.
+seo:
+  index_title: ""
+  index_description: ""
+
 # Числовой id организации на Timepad — нужен только виджету-афише
 # (TIMEPAD_LIST_WIDGET=1). Переменная окружения TIMEPAD_ORG_ID важнее.
 timepad_org_id: ""

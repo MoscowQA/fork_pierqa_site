@@ -274,6 +274,25 @@ def check_fonts(dist: Path) -> None:
             error(where, f"нет файла шрифта: {url}")
 
 
+def check_seo_readiness(site: sites.Site, event_count: int) -> None:
+    """Опубликованный сайт не должен выходить к поисковикам заготовкой.
+
+    `published: true` в site.yml снимает noindex со всех страниц и ставит
+    ссылки на сайт с соседних сообществ. Тексты-заглушки и пустая лента
+    митапов в этот момент — тонкий контент, по которому поисковик составит
+    первое мнение о домене.
+    """
+    where = sites.rel(site.dir / "site.yml")
+    if not site.config["published"]:
+        return
+    if not event_count:
+        warn(where, "published: true, а событий ещё нет — главная будет пустой")
+    for page in sorted(site.content_dir.glob("*.md")):
+        if "ЗАГОТОВКА" in page.read_text(encoding="utf-8"):
+            error(sites.rel(page), "текст-заготовка на опубликованном сайте "
+                                   "(published: true) — перепишите или верните false")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("sites", nargs="*",
@@ -295,6 +314,7 @@ def main() -> None:
         build.configure(site)
         speakers = check_speakers(site)
         event_count = check_events(site, speakers)
+        check_seo_readiness(site, event_count)
         if not args.no_links:
             dist = args.dist or site.output_dir
             check_links(dist)

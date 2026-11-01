@@ -219,3 +219,121 @@ class TestRealCommunities:
     def test_moscowqa_is_the_default(self, monkeypatch):
         monkeypatch.delenv("SITE", raising=False)
         assert sites.load_site().id == "moscowqa"
+
+
+# --- SEO между сообществами ---------------------------------------------------
+
+OTHER_YML = """\
+title: "Other QA"
+brand: "OtherQA"
+url: "https://other-qa.example"
+city: "Самара"
+published: {published}
+"""
+
+
+def ld_json(html: str) -> list:
+    import json
+    return [json.loads(block) for block in re.findall(
+        r'<script type="application/ld\+json">(.*?)</script>', html, re.S)]
+
+
+@pytest.fixture
+def two_sites(sandbox):
+    """demo + other; у other тот же спикер «Иван Иванов» и нет событий."""
+    def make(published: bool):
+        other = sandbox / "sites" / "other"
+        write(other / "site.yml", OTHER_YML.format(published=str(published).lower()))
+        write(other / "content" / "speakers" / "ivan-ivanov.md",
+              '---\nname: "Иван Иванов"\n---\n')
+        return sandbox
+    return make
+
+
+def build_quiet(site_id, capsys):
+    build.build(site_id)
+    capsys.readouterr()
+
+
+class TestSeo:
+    def test_json_ld_is_valid_everywhere(self, sandbox, capsys):
+        build_quiet("demo", capsys)
+        for page in (sandbox / "dist" / "demo").rglob("*.html"):
+            ld_json(page.read_text(encoding="utf-8"))  # не падает
+
+    def test_published_site_is_indexable(self, sandbox, capsys):
+        build_quiet("demo", capsys)
+        dist = sandbox / "dist" / "demo"
+        assert 'content="noindex"' not in (dist / "index.html").read_text()
+        assert "Sitemap: https://demo-qa.example/sitemap.xml" in (dist / "robots.txt").read_text()
+        assert 'content="noindex"' in (dist / "404.html").read_text()
+
+    def test_unpublished_site_is_noindex_and_unannounced(self, two_sites, capsys):
+        root = two_sites(published=False)
+        build_quiet("other", capsys)
+        dist = root / "dist" / "other"
+        for page in dist.rglob("*.html"):
+            assert 'name="robots" content="noindex"' in page.read_text(), page
+        assert "Sitemap" not in (dist / "robots.txt").read_text()
+
+    def test_unpublished_site_is_not_linked_from_neighbours(self, two_sites, capsys):
+        root = two_sites(published=False)
+        build_quiet("demo", capsys)
+        dist = root / "dist" / "demo"
+        assert "other-qa.example" not in (dist / "index.html").read_text()
+        speaker = (dist / "speakers" / "ivan-ivanov" / "index.html").read_text()
+        assert "other-qa.example" not in speaker
+
+    def test_published_neighbours_link_each_other(self, two_sites, capsys):
+        root = two_sites(published=True)
+        build_quiet("demo", capsys)
+        dist = root / "dist" / "demo"
+        assert 'href="https://other-qa.example/"' in (dist / "index.html").read_text()
+
+        speaker = (dist / "speakers" / "ivan-ivanov" / "index.html").read_text()
+        url = "https://other-qa.example/speakers/ivan-ivanov/"
+        assert f'href="{url}">Other QA</a>' in speaker
+        person = next(d for d in ld_json(speaker) if d["@type"] == "Person")
+        assert url in person["sameAs"]
+
+    def test_neighbour_links_ignore_site_url_override(self, two_sites, capsys, monkeypatch):
+        # SITE_URL подменяет адрес собираемого сайта (стенд), но не соседей.
+        root = two_sites(published=True)
+        monkeypatch.setenv("SITE_URL", "https://staging.example")
+        build_quiet("demo", capsys)
+        html = (root / "dist" / "demo" / "index.html").read_text()
+        assert 'href="https://other-qa.example/"' in html
+
+    def test_empty_sections_are_noindex_and_out_of_sitemap(self, two_sites, capsys):
+        root = two_sites(published=True)
+        (root / "sites" / "other" / "content" / "speakers" / "ivan-ivanov.md").unlink()
+        build_quiet("other", capsys)
+        dist = root / "dist" / "other"
+        assert 'content="noindex"' in (dist / "speakers" / "index.html").read_text()
+        assert 'content="noindex"' in (dist / "presentations" / "index.html").read_text()
+        assert 'content="noindex"' not in (dist / "index.html").read_text()
+        sitemap = (dist / "sitemap.xml").read_text()
+        assert "/speakers/</loc>" not in sitemap
+        assert "/presentations/</loc>" not in sitemap
+        assert "<loc>https://other-qa.example/</loc>" in sitemap
+
+    def test_organization_schema(self, sandbox, capsys):
+        build_quiet("demo", capsys)
+        html = (sandbox / "dist" / "demo" / "index.html").read_text()
+        org = next(d for d in ld_json(html) if d["@type"] == "Organization")
+        assert org["alternateName"] == ["DemoQA"]
+        assert org["logo"] == "https://demo-qa.example/static/images/logo.png"
+        website = next(d for d in ld_json(html) if d["@type"] == "WebSite")
+        assert website["name"] == "Demo QA"
+
+    def test_verification_and_seo_overrides(self, sandbox, capsys):
+        yml = sandbox / "sites" / "demo" / "site.yml"
+        yml.write_text(yml.read_text() + (
+            'verification:\n  yandex: "ya-123"\n  google: "g-456"\n'
+            'seo:\n  index_title: "Свой заголовок"\n'
+        ))
+        build_quiet("demo", capsys)
+        html = (sandbox / "dist" / "demo" / "index.html").read_text()
+        assert '<meta name="yandex-verification" content="ya-123">' in html
+        assert '<meta name="google-site-verification" content="g-456">' in html
+        assert "<title>Свой заголовок</title>" in html
