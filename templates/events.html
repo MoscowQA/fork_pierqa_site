@@ -3,8 +3,8 @@
 {% import "partials/timepad.html" as timepad %}
 {% set active_page = 'index' %}
 
-{% block title %}Митапы по тестированию и QA в Москве — {{ site.title }}{% endblock %}
-{% block description %}{{ events | length }} митапов по тестированию и QA в Москве от сообщества Moscow QA. Доклады по автоматизации, ручному и нагрузочному тестированию, QA-процессам и обеспечению качества ПО{% endblock %}
+{% block title %}Митапы по тестированию и QA в {{ site.city_prepositional }} — {{ site.title }}{% endblock %}
+{% block description %}{{ events | length }} митапов по тестированию и QA в {{ site.city_prepositional }} от сообщества {{ site.title }}. Доклады по автоматизации, ручному и нагрузочному тестированию, QA-процессам и обеспечению качества ПО{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
@@ -21,8 +21,8 @@
 {% block content %}
 <main class="main">
     <div class="container">
-        <h1 class="section__title">Митапы по тестированию и QA в Москве</h1>
-        <p class="text-muted" style="margin-bottom: 2rem;">{{ events | length }} митапов сообщества QA-инженеров Москвы — доклады по тестированию, автоматизации и обеспечению качества</p>
+        <h1 class="section__title">Митапы по тестированию и QA в {{ site.city_prepositional }}</h1>
+        <p class="text-muted" style="margin-bottom: 2rem;">{{ events | length }} митапов сообщества QA-инженеров {{ site.city_genitive }} — доклады по тестированию, автоматизации и обеспечению качества</p>
 
         {# Live announcements from Timepad. Off unless TIMEPAD_ORG_ID and
            TIMEPAD_LIST_WIDGET=1 are set — see TIMEPAD_WIDGET.md. #}
@@ -38,7 +38,7 @@
                     {{ cover.cover(event, base, "event-card__cover") }}
                     {% else %}
                     <span class="event-card__number">{{ event.number }}</span>
-                    <span class="event-card__label">MoscowQA</span>
+                    <span class="event-card__label">{{ site.brand }}</span>
                     {% endif %}
                     <span class="event-card__tag--upcoming js-upcoming-only">Предстоящее</span>
                 </div>

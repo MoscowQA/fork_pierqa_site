@@ -7,8 +7,8 @@ a speaker's photo (or picks up one already committed), writes two WebP
 variants next to each other and rewrites the `photo` field of the speaker's
 markdown file:
 
-    static/images/speakers/{slug}.webp       ~1080px, the full-size variant
-    static/images/speakers/{slug}-540.webp   540px, what cards actually need
+    sites/{id}/static/images/speakers/{slug}.webp       ~1080px, the full-size variant
+    sites/{id}/static/images/speakers/{slug}-540.webp   540px, what cards actually need
 
 build.py notices the smaller file and emits a srcset, so a 280px card no
 longer downloads a 1080px photo.
@@ -18,6 +18,9 @@ Usage:
     python3 scripts/localize_speaker_photos.py ivan-ivanov  # one speaker
     python3 scripts/localize_speaker_photos.py --dry-run
     python3 scripts/localize_speaker_photos.py --keep-originals
+    python3 scripts/localize_speaker_photos.py --site piterqa
+
+Without --site the community comes from SITE in the environment, or moscowqa.
 """
 
 import argparse
@@ -30,8 +33,14 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-SPEAKERS_DIR = ROOT / "content" / "speakers"
-PHOTOS_DIR = ROOT / "static" / "images" / "speakers"
+sys.path.insert(0, str(ROOT))
+
+import sites  # noqa: E402
+
+# Set in main() from --site: speakers and their photos belong to a community.
+SITE: sites.Site
+SPEAKERS_DIR: Path
+PHOTOS_DIR: Path
 PHOTO_URL_PREFIX = "/static/images/speakers"
 
 FULL_SIZE = 1080
@@ -46,12 +55,14 @@ def read_source(value: str) -> bytes:
     """Fetch the photo a speaker file points at — remote URL or local path."""
     if value.startswith(("http://", "https://")):
         request = urllib.request.Request(
-            value, headers={"User-Agent": "moscowqa-site/1.0"}
+            value, headers={"User-Agent": "qa-community-site/1.0"}
         )
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return response.read()
 
-    local = ROOT / value.lstrip("/")
+    local = SITE.static_path(value)
+    if local is None:
+        raise FileNotFoundError(value)
     return local.read_bytes()
 
 
@@ -111,7 +122,15 @@ def main() -> None:
                         help="Показать, что будет сделано, ничего не записывая")
     parser.add_argument("--keep-originals", action="store_true",
                         help="Не удалять исходные файлы, которые заменил webp")
+    parser.add_argument("--site", default=None,
+                        help="Сообщество из sites/ (по умолчанию SITE или moscowqa)")
     args = parser.parse_args()
+
+    global SITE, SPEAKERS_DIR, PHOTOS_DIR
+    SITE = sites.load_site(args.site)
+    SPEAKERS_DIR = SITE.speakers_dir
+    PHOTOS_DIR = SITE.static_dir / "images" / "speakers"
+    print(f"[{SITE.id}] спикеры из {SITE.rel(SPEAKERS_DIR)}/")
 
     files = sorted(SPEAKERS_DIR.glob("*.md"))
     if args.slugs:
@@ -151,8 +170,8 @@ def main() -> None:
 
         # The source file this replaces, when it was already in the repo.
         if not photo.startswith(("http://", "https://")) and not args.keep_originals:
-            old = ROOT / photo.lstrip("/")
-            if old.exists() and old.resolve() != full_path.resolve():
+            old = SITE.static_path(photo)
+            if old is not None and old.resolve() != full_path.resolve():
                 old.unlink()
 
         print(

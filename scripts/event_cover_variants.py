@@ -6,9 +6,9 @@
 352px, и на карточке в списке, и на мобильном. Этот скрипт дописывает рядом
 с каждой обложкой её webp-версии:
 
-    static/images/events/{имя}.webp       исходный размер (не больше 1200px)
-    static/images/events/{имя}-768.webp   для десктопа с retina
-    static/images/events/{имя}-540.webp   для мобильного
+    sites/{id}/static/images/events/{имя}.webp       исходный размер (не больше 1200px)
+    sites/{id}/static/images/events/{имя}-768.webp   для десктопа с retina
+    sites/{id}/static/images/events/{имя}-540.webp   для мобильного
 
 `build.py` сам замечает эти файлы и собирает из них `<picture>`
 (см. `event_cover_variants` и `templates/partials/cover.html`).
@@ -21,6 +21,9 @@
     python3 scripts/event_cover_variants.py             # все обложки
     python3 scripts/event_cover_variants.py 28-black    # обложки одного события
     python3 scripts/event_cover_variants.py --dry-run
+    python3 scripts/event_cover_variants.py --site piterqa   # другое сообщество
+
+Без --site берётся SITE из окружения, а без него — moscowqa.
 """
 
 import argparse
@@ -31,7 +34,9 @@ import yaml
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-EVENTS_DIR = ROOT / "content" / "events"
+sys.path.insert(0, str(ROOT))
+
+import sites  # noqa: E402
 
 # Обложку нигде не показывают крупнее ~740px (мобильный во всю ширину), так
 # что исходник выше 1200px — это запас на retina и не более того.
@@ -89,9 +94,13 @@ def main(argv=None) -> int:
     parser.add_argument("slugs", nargs="*", help="слаги событий (по умолчанию — все)")
     parser.add_argument("--dry-run", action="store_true",
                         help="показать, что будет сделано, ничего не записывая")
+    parser.add_argument("--site", default=None,
+                        help="сообщество из sites/ (по умолчанию SITE или moscowqa)")
     args = parser.parse_args(argv)
 
-    files = sorted(EVENTS_DIR.glob("*.md"))
+    site = sites.load_site(args.site)
+    print(f"[{site.id}] обложки из {site.rel(site.events_dir)}/")
+    files = sorted(site.events_dir.glob("*.md"))
     if args.slugs:
         wanted = set(args.slugs)
         files = [f for f in files if f.stem in wanted]
@@ -105,8 +114,8 @@ def main(argv=None) -> int:
         for cover in cover_paths(event_file):
             if not cover.startswith("/static/"):
                 continue
-            source = ROOT / cover.lstrip("/")
-            if not source.exists():
+            source = site.static_path(cover)
+            if source is None:
                 print(f"ВНИМАНИЕ {event_file.name}: нет файла {cover}", file=sys.stderr)
                 continue
             if source.suffix.lower() == ".webp":

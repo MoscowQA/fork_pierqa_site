@@ -72,13 +72,17 @@ python parsers/sync_sqadays.py --dry-run
 
 ---
 
-## Добавить нового спикера MoscowQA
+## Добавить нового спикера
 
-1. Создайте файл в `content/speakers/`
+1. Создайте файл в `sites/<сообщество>/content/speakers/`
 2. Запустите синхронизацию — доклады подтянутся автоматически:
 
 ```bash
-python parsers/sync_heisenbug.py
-python parsers/sync_sqadays.py
+python parsers/sync_heisenbug.py            # все сообщества из sites/
+python parsers/sync_sqadays.py piterqa      # или только одно
 python build.py
 ```
+
+Данные конференций (`heisenbug_speakers.json`, `sqadays_speakers.json`)
+общие, а спикеры у каждого сообщества свои: sync проходит по
+`sites/*/content/speakers/` и дописывает доклады в каждый совпавший файл.

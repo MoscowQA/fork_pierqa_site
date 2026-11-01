@@ -18,7 +18,7 @@
             {{ cover.cover(event, base, "event-card__cover") }}
             {% else %}
             <span class="event-card__number">{{ event.number }}</span>
-            <span class="event-card__label">MoscowQA</span>
+            <span class="event-card__label">{{ site.brand }}</span>
             {% endif %}
             <span class="event-card__tag--upcoming js-upcoming-only">Предстоящее</span>
         </div>

@@ -4,26 +4,39 @@
 {% import "partials/event_card.html" as cards %}
 {% set active_page = 'index' %}
 
-{% block title %}QA Москвы — митапы по тестированию в Москве | {{ site.title }}{% endblock %}
-{% block description %}Moscow QA — сообщество QA-инженеров Москвы. Бесплатные митапы по тестированию и QA в Москве: автоматизация тестирования, ручное тестирование, нагрузочное тестирование и обеспечение качества ПО. Присоединяйтесь!{% endblock %}
+{# Заголовок и описание главной можно переписать в site.yml (`seo`) — под
+   то, как ищут именно этот город: «QA Питер», «тестировщики СПб». #}
+{% block title %}{{ site.seo.index_title or ('QA ' ~ site.city_genitive ~ ' — митапы по тестированию в ' ~ site.city_prepositional ~ ' | ' ~ site.title) }}{% endblock %}
+{% block description %}{{ site.seo.index_description or (site.title ~ ' — сообщество QA-инженеров ' ~ site.city_genitive ~ '. Бесплатные митапы по тестированию и QA в ' ~ site.city_prepositional ~ ': автоматизация тестирования, ручное тестирование, нагрузочное тестирование и обеспечение качества ПО. Присоединяйтесь!') }}{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
 {
     "@context": "https://schema.org",
     "@type": "Organization",
-    "name": "Moscow QA",
-    "description": "Moscow QA — бесплатные митапы по тестированию и обеспечению качества ПО в Москве. Доклады по автоматизации, ручному и нагрузочному тестированию.",
+    "name": "{{ site.title }}",
+    {% if site.alternate_names %}"alternateName": {{ site.alternate_names | tojson }},{% endif %}
+    "logo": "{{ site.logo_url }}",
+    "description": "{{ site.title }} — бесплатные митапы по тестированию и обеспечению качества ПО в {{ site.city_prepositional }}. Доклады по автоматизации, ручному и нагрузочному тестированию.",
     {% if site_url %}"url": "{{ site_url }}/",{% endif %}
-    "sameAs": [
-        "{{ site.telegram }}",
-        "{{ site.youtube }}"
-    ],
+    {% set same_as = [site.telegram, site.youtube] | select | list %}
+    {% if same_as %}"sameAs": {{ same_as | tojson }},{% endif %}
     "areaServed": {
         "@type": "City",
-        "name": "Москва"
+        "name": "{{ site.city }}"
     },
-    "knowsAbout": ["тестирование ПО", "QA", "QA Москвы", "автоматизация тестирования", "обеспечение качества"]
+    "knowsAbout": ["тестирование ПО", "QA", "QA {{ site.city_genitive }}", "автоматизация тестирования", "обеспечение качества"]
+}
+</script>
+{# WebSite — отсюда Google берёт название сайта в выдаче («Piter QA»
+   вместо домена). #}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "{{ site.title }}",
+    {% if site.alternate_names %}"alternateName": {{ site.alternate_names | tojson }},{% endif %}
+    "url": "{{ site_url }}/"
 }
 </script>
 {% endblock %}
@@ -31,8 +44,8 @@
 {% block content %}
 <main class="main">
     <section class="hero-intro" style="text-align:center;padding:2.5rem 0 1rem;">
-        <h1>QA Москвы — митапы по тестированию</h1>
-        <p style="max-width:640px;margin:0.75rem auto 0;color:var(--gray-600);font-size:1.125rem;">Moscow QA — сообщество тестировщиков и QA-инженеров Москвы. Проводим бесплатные митапы с докладами по автоматизации тестирования, ручному тестированию, нагрузочному тестированию и обеспечению качества ПО.</p>
+        <h1>QA {{ site.city_genitive }} — митапы по тестированию</h1>
+        <p style="max-width:640px;margin:0.75rem auto 0;color:var(--gray-600);font-size:1.125rem;">{{ site.title }} — сообщество тестировщиков и QA-инженеров {{ site.city_genitive }}. Проводим бесплатные митапы с докладами по автоматизации тестирования, ручному тестированию, нагрузочному тестированию и обеспечению качества ПО.</p>
     </section>
     {% if featured_event %}
     {#

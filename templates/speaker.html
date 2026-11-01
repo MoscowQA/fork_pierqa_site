@@ -2,7 +2,7 @@
 {% set active_page = 'speakers' %}
 
 {% block title %}{{ speaker.name }} — Профиль спикера — {{ site.title }}{% endblock %}
-{% block description %}{{ speaker.name }}{% if speaker.company %}, {{ speaker.company }}{% endif %} — профиль спикера сообщества Moscow QA{% endblock %}
+{% block description %}{{ speaker.name }}{% if speaker.company %}, {{ speaker.company }}{% endif %} — профиль спикера сообщества {{ site.title }}{% endblock %}
 {% block og_type %}profile{% endblock %}
 {% block og_image %}{% if speaker.photo %}<meta property="og:image" content="{{ speaker.photo_variants.absolute }}">{% endif %}{% endblock %}
 
@@ -15,11 +15,7 @@
     {% if speaker.company %}"worksFor": {"@type": "Organization", "name": {{ speaker.company | tojson }}},{% endif %}
     {% if speaker.photo %}"image": {{ speaker.photo_variants.absolute | tojson }},{% endif %}
     {% if canonical_url %}"url": "{{ canonical_url }}",{% endif %}
-    "sameAs": [
-        {% if speaker.telegram %}"https://t.me/{{ speaker.telegram }}"{% endif %}
-        {% if speaker.telegram and speaker.github %},{% endif %}
-        {% if speaker.github %}"https://github.com/{{ speaker.github }}"{% endif %}
-    ]
+    "sameAs": {{ speaker.same_as | default([], true) | tojson }}
 }
 </script>
 <script type="application/ld+json">
@@ -96,6 +92,16 @@
                     {% endif %}
                 </div>
                 {% endif %}
+
+                {# Тот же человек у соседнего сообщества (build.py,
+                   speaker_profiles_elsewhere): ссылка для людей и sameAs
+                   в разметке для поисковиков. #}
+                {% if speaker.elsewhere %}
+                <p class="speaker-detail__elsewhere text-muted">
+                    Также выступает на
+                    {% for profile in speaker.elsewhere %}<a href="{{ profile.url }}">{{ profile.community }}</a>{{ ", " if not loop.last }}{% endfor %}
+                </p>
+                {% endif %}
             </div>
         </div>
 
@@ -109,7 +115,7 @@
             {% if speaker_talks %}
             <div class="speaker-stats__item">
                 <span class="speaker-stats__number">{{ speaker_talks | length }}</span>
-                <span class="speaker-stats__label">на Moscow QA</span>
+                <span class="speaker-stats__label">на {{ site.title }}</span>
             </div>
             {% endif %}
             {% if speaker.external_talks | default([], true) | length > 0 %}
@@ -123,7 +129,7 @@
 
         {% if speaker_talks %}
         <section class="section speaker-talks">
-            <h2 class="section__title" style="color: var(--gray-900);">Доклады на Moscow QA</h2>
+            <h2 class="section__title" style="color: var(--gray-900);">Доклады на {{ site.title }}</h2>
             {% for talk in speaker_talks %}
             <div class="talk-item">
                 <div class="talk-item__meta">

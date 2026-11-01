@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Static site generator for MoscowQA community website.
+"""Static site generator for the QA community websites (Moscow QA, Piter QA…).
 
-Reads markdown content from content/ directory, applies Jinja2 templates,
-and outputs static HTML to dist/ directory.
+Reads markdown content from sites/{id}/content/, applies the shared Jinja2
+templates and writes static HTML to dist/{id}/. Which communities exist and
+where their files live is described in sites.py and SITES.md.
+
+    python3 build.py                # все сообщества
+    python3 build.py piterqa        # одно
 """
+import argparse
 import os
 import re
 import shutil
@@ -16,6 +21,7 @@ from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 
 import og_images
+import sites
 
 # Прошло событие или ещё нет — считается здесь, на сборке, по `date`.
 # Раньше это делал только фронтенд (static/js/events-status.js): без JS и для
@@ -28,19 +34,58 @@ import og_images
 # переключает `.is-upcoming` / `.is-completed` по дате самого посетителя.
 
 ROOT = Path(__file__).parent
-CONTENT_DIR = ROOT / "content"
-TEMPLATES_DIR = ROOT / "templates"
-STATIC_DIR = ROOT / "static"
-OUTPUT_DIR = ROOT / "dist"
+TEMPLATES_DIR = sites.SHARED_TEMPLATES_DIR
+STATIC_DIR = sites.SHARED_STATIC_DIR
 
 BASE_URL = os.environ.get("BASE_URL", "")
-SITE_URL = os.environ.get("SITE_URL", "https://moscowqa.ru")
 
-# Внешние адреса сообщества. Лежат рядом, потому что их читает и подвал
+# --- Сообщество -------------------------------------------------------------
+# Всё, что отличает один сайт от другого, читается из sites/{id}/site.yml.
+# Функции ниже берут это из глобальных переменных модуля — их выставляет
+# `configure()`. При импорте модуль настраивается на сообщество по умолчанию
+# (SITE из окружения или moscowqa), поэтому `import build` из тестов и
+# скриптов работает как раньше, а `build()` перенастраивает его под каждое
+# собираемое сообщество.
+SITE: sites.Site
+SITE_DIR: Path
+CONTENT_DIR: Path
+OUTPUT_DIR: Path
+SITE_URL: str
+SITE_DOMAIN: str
+SITE_TITLE: str
+# Внешние адреса сообщества. Лежат здесь, потому что их читает и подвал
 # сайта (через `site`), и разметка schema.org.
-TELEGRAM_URL = "https://t.me/moscowqa"
-YOUTUBE_URL = "https://www.youtube.com/@moscowqa"
-TIMEPAD_ORG_URL = "https://moscowqa.timepad.ru"
+TELEGRAM_URL: str
+YOUTUBE_URL: str
+TIMEPAD_ORG_URL: str
+
+
+def configure(site: "sites.Site | str | None" = None) -> "sites.Site":
+    """Настроить модуль на сообщество и вернуть его."""
+    global SITE, SITE_DIR, CONTENT_DIR, OUTPUT_DIR, SITE_URL, SITE_DOMAIN
+    global SITE_TITLE, TELEGRAM_URL, YOUTUBE_URL, TIMEPAD_ORG_URL, TIMEPAD_ORG_ID
+    if not isinstance(site, sites.Site):
+        site = sites.load_site(site)
+    links = site.config.get("links") or {}
+    SITE = site
+    SITE_DIR = site.dir
+    CONTENT_DIR = site.content_dir
+    OUTPUT_DIR = site.output_dir
+    SITE_URL = site.url
+    SITE_DOMAIN = site.domain
+    SITE_TITLE = site.config["title"]
+    TELEGRAM_URL = links.get("telegram", "")
+    YOUTUBE_URL = links.get("youtube", "")
+    TIMEPAD_ORG_URL = (links.get("timepad") or "").rstrip("/")
+    TIMEPAD_ORG_ID = os.environ.get("TIMEPAD_ORG_ID") or str(
+        site.config.get("timepad_org_id") or ""
+    )
+    return site
+
+
+def static_file(url: str) -> Path | None:
+    """Файл на диске для адреса `/static/...`: в static/ сообщества или общем."""
+    return SITE.static_path(url, ROOT)
 
 
 def env_flag(name: str, default: bool = False) -> bool:
@@ -62,7 +107,8 @@ TIMEPAD_LOADER = os.environ.get(
 # means "use Timepad's default customization".
 TIMEPAD_CUSTOMIZATION_ID = os.environ.get("TIMEPAD_CUSTOMIZATION_ID", "")
 # Numeric Timepad organization id — only needed for the event list widget.
-TIMEPAD_ORG_ID = os.environ.get("TIMEPAD_ORG_ID", "")
+# Per community (`timepad_org_id` in site.yml); set by configure().
+TIMEPAD_ORG_ID = ""
 TIMEPAD_LOCALE = os.environ.get("TIMEPAD_LOCALE", "ru")
 # Master switch and the mode used by events that do not pick one themselves.
 # Default is "popup": the form opens over the page from the registration card,
@@ -300,15 +346,15 @@ def build_ics(event: dict, url: str, now: datetime = None) -> str:
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//Moscow QA//moscowqa.ru//RU",
+        f"PRODID:-//{SITE_TITLE}//{SITE_DOMAIN}//RU",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",
-        f"UID:{event.get('slug', 'event')}@moscowqa.ru",
+        f"UID:{event.get('slug', 'event')}@{SITE_DOMAIN}",
         f"DTSTAMP:{stamp}",
         start_line,
         end_line,
-        f"SUMMARY:{escape_ics_text(event.get('title', 'Moscow QA'))}",
+        f"SUMMARY:{escape_ics_text(event.get('title', SITE_TITLE))}",
         f"DESCRIPTION:{escape_ics_text(description)}",
     ]
     if event.get("address"):
@@ -330,7 +376,7 @@ def google_calendar_url(event: dict, url: str) -> str:
 
     params = {
         "action": "TEMPLATE",
-        "text": event.get("title", "Moscow QA"),
+        "text": event.get("title", SITE_TITLE),
         "dates": f"{start.strftime(fmt)}/{end.strftime(fmt)}",
         "details": " ".join(
             part for part in [event.get("short_description") or "", url] if part
@@ -487,9 +533,9 @@ def event_schema(event: dict, url: str, speaker_by_name: dict = None) -> dict:
 
     schema["organizer"] = {
         "@type": "Organization",
-        "name": "Moscow QA",
+        "name": SITE_TITLE,
         "url": SITE_URL + "/",
-        "sameAs": [TELEGRAM_URL, YOUTUBE_URL],
+        "sameAs": [url for url in (TELEGRAM_URL, YOUTUBE_URL) if url],
     }
     schema["isAccessibleForFree"] = True
     schema["offers"] = event_offers(event, url)
@@ -660,9 +706,11 @@ def speaker_photo_variants(photo: str) -> dict:
     if not photo.startswith("/static/"):
         return variants
 
-    full_path = ROOT / photo.lstrip("/")
+    full_path = static_file(photo)
+    if full_path is None:
+        return variants
     small_path = full_path.with_name(f"{full_path.stem}-{PHOTO_CARD_WIDTH}.webp")
-    if not (full_path.exists() and small_path.exists()):
+    if not small_path.exists():
         return variants
 
     small_url = f"{photo.rsplit('/', 1)[0]}/{small_path.name}"
@@ -698,8 +746,8 @@ def event_cover_variants(cover: str) -> dict:
     if not cover.startswith("/static/"):
         return variants
 
-    source = ROOT / cover.lstrip("/")
-    if not source.exists():
+    source = static_file(cover)
+    if source is None:
         return variants
 
     with Image.open(source) as image:
@@ -738,9 +786,9 @@ def parse_md_file(filepath: Path) -> dict:
     return {**front_matter, "body": body_html}
 
 
-def load_events() -> list[dict]:
+def load_events(content_dir: Path = None) -> list[dict]:
     """Load all event markdown files, sorted by date descending."""
-    events_dir = CONTENT_DIR / "events"
+    events_dir = (content_dir or CONTENT_DIR) / "events"
     today = moscow_today()
     events = []
     if events_dir.exists():
@@ -786,9 +834,9 @@ def load_events() -> list[dict]:
     return events
 
 
-def load_speakers() -> list[dict]:
+def load_speakers(content_dir: Path = None) -> list[dict]:
     """Load all speaker markdown files, sorted by name."""
-    speakers_dir = CONTENT_DIR / "speakers"
+    speakers_dir = (content_dir or CONTENT_DIR) / "speakers"
     speakers = []
     if speakers_dir.exists():
         for f in speakers_dir.glob("*.md"):
@@ -800,10 +848,10 @@ def load_speakers() -> list[dict]:
     return speakers
 
 
-def load_pages() -> dict:
+def load_pages(content_dir: Path = None) -> dict:
     """Load site-level pages (about, cfp, etc.)."""
     pages = {}
-    for f in CONTENT_DIR.glob("*.md"):
+    for f in sorted((content_dir or CONTENT_DIR).glob("*.md")):
         page = parse_md_file(f)
         page["slug"] = f.stem
         pages[f.stem] = page
@@ -829,7 +877,7 @@ def sitemap_lastmod(values, today: date) -> str:
     return min(max(known), today).isoformat()
 
 
-def generate_sitemap(events, speakers, pages, tags=()):
+def generate_sitemap(events, speakers, pages, tags=(), exclude=()):
     """Generate sitemap.xml for search engines.
 
     lastmod считается из контента, а не из mtime файлов: в CI репозиторий
@@ -940,6 +988,11 @@ def generate_sitemap(events, speakers, pages, tags=()):
             "priority": "0.5",
         })
 
+    # Страницы без содержания (пустой список спикеров у нового сообщества)
+    # отдаются с noindex — звать на них краулера незачем.
+    excluded = {f"{SITE_URL}{path}" for path in exclude}
+    urls = [u for u in urls if u["loc"] not in excluded]
+
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     for u in urls:
@@ -954,19 +1007,97 @@ def generate_sitemap(events, speakers, pages, tags=()):
     return "\n".join(lines)
 
 
-def build():
-    """Build the static site."""
+def speaker_profiles_elsewhere(site: "sites.Site") -> dict[str, list[dict]]:
+    """Имя спикера → его профили у других опубликованных сообществ."""
+    found: dict[str, list[dict]] = {}
+    for other in sites.other_communities(site.id):
+        base = other.config["url"].rstrip("/")
+        for path in sorted(other.speakers_dir.glob("*.md")):
+            name = str(parse_md_file(path).get("name") or "").strip()
+            if name:
+                found.setdefault(name, []).append({
+                    "community": other.config["title"],
+                    "url": f"{base}/speakers/{path.stem}/",
+                })
+    return found
+
+
+def speaker_same_as(speaker: dict) -> list[str]:
+    """schema.org sameAs спикера: его соцсети и профили у других сообществ."""
+    links = []
+    if speaker.get("telegram"):
+        links.append(f"https://t.me/{speaker['telegram']}")
+    if speaker.get("github"):
+        links.append(f"https://github.com/{speaker['github']}")
+    if speaker.get("twitter"):
+        links.append(f"https://twitter.com/{speaker['twitter']}")
+    if str(speaker.get("website") or "").startswith(("http://", "https://")):
+        links.append(speaker["website"])
+    links += [profile["url"] for profile in speaker.get("elsewhere") or []]
+    return links
+
+
+def site_context(site: "sites.Site") -> dict:
+    """`site` для шаблонов: настройки сообщества плюс то, что считает сборка."""
+    config = site.config
+    # Подвал: «© 2024 — 2026». Год основания пропускаем, пока он совпадает
+    # с текущим, — иначе вышло бы «2026 — 2026».
+    year = moscow_today().year
+    since = int(config["since"]) if config.get("since") else None
+    return {
+        "id": site.id,
+        "title": config["title"],
+        "brand": config["brand"],
+        "description": config["description"],
+        "domain": site.domain,
+        "city": config["city"],
+        "city_genitive": config["city_genitive"],
+        "city_prepositional": config["city_prepositional"],
+        "since": since if since and since < year else None,
+        "published": config["published"],
+        "verification": config["verification"],
+        # Название сообщества в других написаниях — schema.org alternateName:
+        # «MoscowQA» и «Moscow QA» поисковик должен считать одним и тем же.
+        "alternate_names": [
+            name for name in dict.fromkeys([config["brand"], *config["alternate_names"]])
+            if name != config["title"]
+        ],
+        "seo": config["seo"],
+        "logo_url": f"{SITE_URL}/static/images/logo.png",
+        # Соседние сообщества для подвала: перекрёстные ссылки между сайтами
+        # одной сети — и навигация, и сигнал поисковику, что сайты связаны.
+        "communities": [
+            {"title": other.config["title"], "url": other.config["url"].rstrip("/") + "/",
+             "city": other.config["city"]}
+            for other in sites.other_communities(site.id)
+        ],
+        "year": year,
+        "telegram": TELEGRAM_URL,
+        "youtube": YOUTUBE_URL,
+        "timepad": TIMEPAD_ORG_URL,
+        "base_url": BASE_URL,
+    }
+
+
+def build(site: "sites.Site | str | None" = None):
+    """Build the static site of one community into dist/{id}/."""
+    site = configure(site)
+
     # Clean output
     if OUTPUT_DIR.exists():
         shutil.rmtree(OUTPUT_DIR)
     OUTPUT_DIR.mkdir(parents=True)
 
-    # Copy static files
+    # Copy static files: the shared engine first (CSS, JS, fonts), then the
+    # community's own images on top of it.
     if STATIC_DIR.exists():
         shutil.copytree(STATIC_DIR, OUTPUT_DIR / "static")
+    if site.static_dir.exists():
+        shutil.copytree(site.static_dir, OUTPUT_DIR / "static", dirs_exist_ok=True)
 
-    # Set up Jinja2
-    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
+    # Set up Jinja2. A community may override any shared template by putting
+    # a file with the same name into sites/{id}/templates/.
+    env = Environment(loader=FileSystemLoader(site.template_dirs()), autoescape=True)
     env.policies["json.dumps_kwargs"] = {"ensure_ascii": False}
     # «2026-10-01» → «1 октября 2026». Нужен блоку «Ближайший митап»: в
     # списках дата остаётся в ISO, а на первом экране её читают глазами.
@@ -977,13 +1108,8 @@ def build():
     speakers = load_speakers()
     pages = load_pages()
 
-    site = {
-        "title": "Moscow QA",
-        "description": "QA-сообщество Москвы — митапы по тестированию",
-        "telegram": TELEGRAM_URL,
-        "youtube": YOUTUBE_URL,
-        "timepad": TIMEPAD_ORG_URL,
-        "base_url": BASE_URL,
+    site_data = {
+        **site_context(site),
         # Consumed by templates/partials/timepad.html — see TIMEPAD_WIDGET.md.
         "timepad_widget": {
             "enabled": TIMEPAD_WIDGET_ENABLED,
@@ -1012,14 +1138,24 @@ def build():
     # Topic tags: talks grouped by the `tags` of their front matter.
     tags = collect_tags(events)
 
+    # Тот же человек у соседнего сообщества: ссылка «Также выступает на…» и
+    # schema.org sameAs. Профили на двух доменах — не дубль, а две стороны
+    # одного человека, и разметка говорит об этом прямо.
+    elsewhere = speaker_profiles_elsewhere(site)
+    for speaker in speakers:
+        speaker["elsewhere"] = elsewhere.get(speaker["name"], [])
+        speaker["same_as"] = speaker_same_as(speaker)
+
     # Link-preview covers. An event with its own `cover` keeps it; the rest
     # get a card drawn from their front matter, and `event["og_image"]` is
     # what templates/event.html puts into og:image. See og_images.py.
     og_count = og_images.generate_event_cards(
-        events, OUTPUT_DIR, speaker_by_name, STATIC_DIR / "images" / "logo.png"
+        events, OUTPUT_DIR, speaker_by_name, site.logo_path,
+        brand=site_data["brand"], domain=site_data["domain"],
+        site_title=site_data["title"],
     )
 
-    common = {"site": site, "events": events, "speakers": speakers, "base": BASE_URL,
+    common = {"site": site_data, "events": events, "speakers": speakers, "base": BASE_URL,
               "speaker_slugs": speaker_slugs, "speaker_by_name": speaker_by_name,
               "site_url": SITE_URL, "tags": tags,
               "og_image_width": og_images.WIDTH,
@@ -1113,9 +1249,16 @@ def build():
             talk_dir.mkdir(parents=True, exist_ok=True)
             (talk_dir / "index.html").write_text(html, encoding="utf-8")
 
+    # Пустые разделы нового сообщества: страница есть (на неё ведёт меню),
+    # но индексировать нечего — noindex и мимо sitemap.
+    thin_pages = set()
+    if not speakers:
+        thin_pages.add("/speakers/")
+
     # Build speakers list page
     tpl = env.get_template("speakers.html")
-    html = tpl.render(**common, canonical_url=f"{SITE_URL}/speakers/")
+    html = tpl.render(**common, canonical_url=f"{SITE_URL}/speakers/",
+                      noindex="/speakers/" in thin_pages)
     (OUTPUT_DIR / "speakers").mkdir(exist_ok=True)
     (OUTPUT_DIR / "speakers" / "index.html").write_text(html, encoding="utf-8")
 
@@ -1144,9 +1287,12 @@ def build():
     speakers_with_talks = sum(
         1 for s in speakers if s.get("external_talks")
     )
+    if not all_talks:
+        thin_pages.add("/presentations/")
     tpl = env.get_template("presentations.html")
     html = tpl.render(
         **common,
+        noindex="/presentations/" in thin_pages,
         all_talks=all_talks,
         total_count=len(all_talks),
         speakers_with_talks=speakers_with_talks,
@@ -1191,7 +1337,12 @@ def build():
             continue
         tpl = env.get_template(template_name)
         canonical = f"{SITE_URL}/{slug}/"
-        html = tpl.render(**common, page=page, canonical_url=canonical)
+        if slug == "organizers" and not (
+            page.get("organizers") or page.get("program_committee")
+        ):
+            thin_pages.add(f"/{slug}/")
+        html = tpl.render(**common, page=page, canonical_url=canonical,
+                          noindex=f"/{slug}/" in thin_pages)
         page_dir = OUTPUT_DIR / slug
         page_dir.mkdir(parents=True, exist_ok=True)
         (page_dir / "index.html").write_text(html, encoding="utf-8")
@@ -1204,11 +1355,15 @@ def build():
     )
 
     # Generate sitemap.xml
-    sitemap = generate_sitemap(events, speakers, pages, tags)
+    sitemap = generate_sitemap(events, speakers, pages, tags, exclude=thin_pages)
     (OUTPUT_DIR / "sitemap.xml").write_text(sitemap, encoding="utf-8")
 
-    # Generate robots.txt
-    robots = f"User-agent: *\nAllow: /\n\nSitemap: {SITE_URL}/sitemap.xml\n"
+    # Generate robots.txt. Неопубликованный сайт не закрываем Disallow:
+    # тогда краулер не увидел бы noindex на страницах. Просто не зовём его
+    # в sitemap.
+    robots = "User-agent: *\nAllow: /\n"
+    if site_data["published"]:
+        robots += f"\nSitemap: {SITE_URL}/sitemap.xml\n"
     (OUTPUT_DIR / "robots.txt").write_text(robots, encoding="utf-8")
 
     talk_count = sum(len(e.get("talks", [])) for e in events)
@@ -1218,6 +1373,7 @@ def build():
     tagged_talks = sum(
         1 for e in events for t in e.get("talks", []) if t.get("tag_links")
     )
+    print(f"[{site.id}] {site_data['title']} → {SITE_URL}")
     print(f"Built {len(events)} events ({len(upcoming_events)} upcoming, "
           f"{len(past_events)} past), {talk_count} talks, "
           f"{len(speakers)} speakers, {len(pages)} pages")
@@ -1226,11 +1382,33 @@ def build():
           f"{len(events) - og_count} events with their own cover")
     if TIMEPAD_WIDGET_ENABLED:
         print(f"Timepad widget: {widget_count}/{len(events)} events, "
-              f"list widget {'on' if site['timepad_widget']['list_enabled'] else 'off'}")
+              f"list widget {'on' if site_data['timepad_widget']['list_enabled'] else 'off'}")
     else:
         print("Timepad widget: disabled (TIMEPAD_WIDGET=0)")
-    print(f"Output: {OUTPUT_DIR}")
+    if not site_data["published"]:
+        print("SEO: published: false — все страницы с noindex, sitemap не объявлен")
+    elif thin_pages:
+        print(f"SEO: noindex для пустых разделов: {', '.join(sorted(thin_pages))}")
+    print(f"Output: {site.rel(OUTPUT_DIR)}/")
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="Собрать сайты сообществ в dist/{id}/.")
+    parser.add_argument(
+        "sites", nargs="*",
+        help=f"какие сообщества собрать: {', '.join(sites.available_sites())}; "
+             "по умолчанию все (или SITE из окружения)",
+    )
+    args = parser.parse_args(argv)
+    for index, site in enumerate(sites.resolve_sites(args.sites)):
+        if index:
+            print()
+        build(site)
+    return 0
+
+
+configure()
 
 
 if __name__ == "__main__":
-    build()
+    raise SystemExit(main())

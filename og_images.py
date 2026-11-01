@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Обложки событий для ссылок в соцсетях (og:image).
 
-Обложку события можно нарисовать руками и положить в `content/events/*.md`
+Обложку события можно нарисовать руками и положить в `sites/{id}/content/events/*.md`
 полем `cover` — так сделано для активностей на чужих конференциях. Для
 обычных митапов рисовать нечего: всё, что нужно на карточке, уже есть в
 front matter, поэтому сборка собирает её сама.
@@ -14,8 +14,9 @@ front matter, поэтому сборка собирает её сама.
 напрямую — рисует те же карточки в отдельную папку, чтобы посмотреть, что
 получится, не пересобирая сайт:
 
-    python3 og_images.py --out /tmp/og            # все события
+    python3 og_images.py --out /tmp/og            # все события Moscow QA
     python3 og_images.py --out /tmp/og 28-black   # только это
+    python3 og_images.py --site piterqa           # другое сообщество
 
 Шрифт — вариативный Inter из `assets/fonts/` (та же гарнитура, что на
 сайте). Эта папка, в отличие от `static/`, на сайт не копируется: шрифт
@@ -34,7 +35,12 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent
 FONT_PATH = ROOT / "assets" / "fonts" / "Inter.ttf"
-LOGO_PATH = ROOT / "static" / "images" / "logo.png"
+# Логотип и подписи по умолчанию — Moscow QA; сборка передаёт свои для
+# каждого сообщества (см. build.py, sites/{id}/site.yml).
+LOGO_PATH = ROOT / "sites" / "moscowqa" / "static" / "images" / "logo.png"
+DEFAULT_BRAND = "MoscowQA"
+DEFAULT_DOMAIN = "moscowqa.ru"
+DEFAULT_TITLE = "Moscow QA"
 
 # Путь обложек внутри сайта. Совпадает с тем, что build.py пишет в
 # dist/ и подставляет в og:image.
@@ -242,7 +248,9 @@ def _pill(draw, xy: tuple[int, int], text: str, font, *, fill, text_color,
 
 
 def render_event_card(event: dict, speaker_by_name: dict | None = None,
-                      logo_path: Path | None = None) -> Image.Image:
+                      logo_path: Path | None = None, *,
+                      brand: str = DEFAULT_BRAND,
+                      domain: str = DEFAULT_DOMAIN) -> Image.Image:
     """Обложка одного события.
 
     Блоки укладываются сверху вниз, и каждый следующий знает, сколько
@@ -266,7 +274,7 @@ def render_event_card(event: dict, speaker_by_name: dict | None = None,
 
     wordmark_font = _font(34, 700)
     ascent, descent = wordmark_font.getmetrics()
-    draw.text((x, header_y + (logo_size - ascent - descent) // 2), "MoscowQA",
+    draw.text((x, header_y + (logo_size - ascent - descent) // 2), brand,
               font=wordmark_font, fill=WHITE)
 
     date_text = format_date(event.get("date"))
@@ -377,7 +385,7 @@ def render_event_card(event: dict, speaker_by_name: dict | None = None,
                       f"и ещё {rest} {_speakers_word(rest)}",
                       font=_font(name_size - 3, 600), fill=DIM)
 
-    draw.text((PAD, footer_y), "moscowqa.ru", font=_font(24, 600), fill=DIM)
+    draw.text((PAD, footer_y), domain, font=_font(24, 600), fill=DIM)
     return img
 
 
@@ -389,9 +397,9 @@ def _speakers_word(n: int) -> str:
     return "спикеров"
 
 
-def card_alt(event: dict) -> str:
+def card_alt(event: dict, site_title: str = DEFAULT_TITLE) -> str:
     """Подпись к обложке: то же, что на ней написано, только словами."""
-    parts = [str(event.get("title") or "").strip() or "Митап Moscow QA"]
+    parts = [str(event.get("title") or "").strip() or f"Митап {site_title}"]
     date_text = format_date(event.get("date"))
     if date_text:
         parts.append(date_text)
@@ -402,7 +410,10 @@ def card_alt(event: dict) -> str:
 
 
 def generate_event_cards(events, output_dir: Path, speaker_by_name=None,
-                         logo_path: Path | None = None) -> int:
+                         logo_path: Path | None = None, *,
+                         brand: str = DEFAULT_BRAND,
+                         domain: str = DEFAULT_DOMAIN,
+                         site_title: str = DEFAULT_TITLE) -> int:
     """Нарисовать обложки событий в `{output_dir}/static/og/events/`.
 
     Событию со своим `cover` обложка не нужна — нарисованная руками лучше
@@ -417,10 +428,11 @@ def generate_event_cards(events, output_dir: Path, speaker_by_name=None,
         if event.get("cover"):
             continue
         slug = event["slug"]
-        card = render_event_card(event, speaker_by_name, logo_path)
+        card = render_event_card(event, speaker_by_name, logo_path,
+                                 brand=brand, domain=domain)
         card.save(target / f"{slug}.png", optimize=True)
         event["og_image"] = f"/{OG_DIR}/{slug}.png"
-        event["og_image_alt"] = card_alt(event)
+        event["og_image_alt"] = card_alt(event, site_title)
         count += 1
     return count
 
@@ -429,11 +441,15 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("slugs", nargs="*", help="слаги событий; по умолчанию все")
     parser.add_argument("--out", default="og-preview", help="куда сложить картинки")
+    parser.add_argument("--site", default=None,
+                        help="сообщество из sites/ (по умолчанию SITE или moscowqa)")
     args = parser.parse_args(argv)
 
     sys.path.insert(0, str(ROOT))
     import build  # noqa: PLC0415 — импорт здесь, чтобы модуль не тянул сборку
 
+    site = build.configure(args.site)
+    card_options = {"brand": site.config["brand"], "domain": site.domain}
     events = build.load_events()
     speaker_by_name = {s["name"]: s for s in build.load_speakers()}
     if args.slugs:
@@ -448,7 +464,8 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     for event in events:
         path = out / f"{event['slug']}.png"
-        render_event_card(event, speaker_by_name).save(path, optimize=True)
+        render_event_card(event, speaker_by_name, site.logo_path,
+                          **card_options).save(path, optimize=True)
         print(f"{path} ({path.stat().st_size // 1024} КБ)")
     print(f"Готово: {len(events)} обложек в {out}")
     return 0
