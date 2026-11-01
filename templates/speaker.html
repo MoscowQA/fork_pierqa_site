@@ -105,7 +105,8 @@
             </div>
         </div>
 
-        {% set total_talks = (speaker_talks | length) + (speaker.external_talks | default([], true) | length) %}
+        {% set elsewhere_talks = speaker.elsewhere | default([], true) | sum(attribute='talks', start=[]) %}
+        {% set total_talks = (speaker_talks | length) + (elsewhere_talks | length) + (speaker.external_talks | default([], true) | length) %}
         {% if total_talks > 0 %}
         <div class="speaker-stats">
             <div class="speaker-stats__item">
@@ -118,6 +119,12 @@
                 <span class="speaker-stats__label">на {{ site.title }}</span>
             </div>
             {% endif %}
+            {% for profile in speaker.elsewhere | default([], true) if profile.talks %}
+            <div class="speaker-stats__item">
+                <span class="speaker-stats__number">{{ profile.talks | length }}</span>
+                <span class="speaker-stats__label">на {{ profile.community }}</span>
+            </div>
+            {% endfor %}
             {% if speaker.external_talks | default([], true) | length > 0 %}
             <div class="speaker-stats__item">
                 <span class="speaker-stats__number">{{ speaker.external_talks | length }}</span>
@@ -148,6 +155,30 @@
             {% endfor %}
         </section>
         {% endif %}
+
+        {# Доклады на митапах соседнего сообщества (build.py,
+           community_talks_by_speaker): ссылки ведут на его сайт. #}
+        {% for profile in speaker.elsewhere | default([], true) if profile.talks %}
+        <section class="section speaker-talks speaker-elsewhere-talks">
+            <h2 class="section__title" style="color: var(--gray-900);">Доклады на {{ profile.community }}</h2>
+            {% for talk in profile.talks %}
+            <div class="talk-item">
+                <div class="talk-item__meta">
+                    <a href="{{ talk.event_url }}">{{ talk.event_title }}</a>,
+                    <time datetime="{{ talk.date }}">{{ talk.date }}</time>
+                </div>
+                <div class="talk-item__title">
+                    <a href="{{ talk.url }}" style="color:inherit;text-decoration:none;">
+                        {{ talk.title }}
+                    </a>
+                </div>
+                {% if talk.description %}
+                <p class="talk-item__desc">{{ talk.description }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </section>
+        {% endfor %}
 
         {% if speaker.external_talks | default([], true) | length > 0 %}
         <section class="section speaker-talks speaker-external-talks">

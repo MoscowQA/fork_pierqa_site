@@ -12,20 +12,37 @@ on:
   # репозиторий — тогда его надо включить обратно на вкладке Actions.
   schedule:
     - cron: "0 1 * * *"
+  # Ручной запуск: Actions → Build and Deploy → Run workflow, и в списке
+  # выбирается сообщество. Пуш в main и ночная пересборка выкладывают
+  # только Moscow QA. Новое сообщество — добавить его в options.
   workflow_dispatch:
+    inputs:
+      site:
+        description: "Какое сообщество выложить"
+        type: choice
+        options:
+          - moscowqa
+          - piterqa
+        default: moscowqa
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
+env:
+  # У push и schedule входных параметров нет — это Moscow QA.
+  SITE: ${{ inputs.site || 'moscowqa' }}
+
 concurrency:
-  group: "pages"
+  group: deploy-${{ inputs.site || 'moscowqa' }}
   cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      domain: ${{ steps.site.outputs.domain }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,21 +55,34 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # В репозитории несколько сообществ (sites/), а GitHub Pages у
-      # репозитория одна — сюда выкладывается Moscow QA, dist/moscowqa/.
-      # Как выкладывать остальные, см. SITES.md, раздел «Деплой».
       - name: Build site
-        run: python build.py moscowqa
+        run: python build.py "$SITE"
 
+      # Домен из site.yml — для CNAME во внешнем репозитории.
+      - name: Read site domain
+        id: site
+        run: echo "domain=$(python -c 'import sites, os; print(sites.load_site(os.environ["SITE"]).domain)')" >> "$GITHUB_OUTPUT"
+
+      # Pages этого репозитория — одна, и на ней moscowqa.ru.
       - name: Setup Pages
+        if: env.SITE == 'moscowqa'
         uses: actions/configure-pages@v4
 
-      - name: Upload artifact
+      - name: Upload Pages artifact
+        if: env.SITE == 'moscowqa'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist/moscowqa
 
+      - name: Upload site artifact
+        if: env.SITE != 'moscowqa'
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: dist/${{ env.SITE }}
+
   deploy:
+    if: (inputs.site || 'moscowqa') == 'moscowqa'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -62,3 +92,38 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # Остальные сообщества живут в своих репозиториях: собранный сайт пушится
+  # в их ветку gh-pages. Что настроить — SITES.md, раздел «Деплой».
+  deploy-repo:
+    if: (inputs.site || 'moscowqa') != 'moscowqa'
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      TARGET_REPO: ${{ vars[format('PAGES_REPO_{0}', inputs.site)] }}
+      DEPLOY_KEY: ${{ secrets[format('DEPLOY_KEY_{0}', inputs.site)] }}
+    steps:
+      - name: Check settings
+        run: |
+          site_upper=$(echo "$SITE" | tr a-z A-Z)
+          if [ -z "$TARGET_REPO" ] || [ -z "$DEPLOY_KEY" ]; then
+            echo "::error::Для $SITE нужны переменная PAGES_REPO_$site_upper (owner/repo) и секрет DEPLOY_KEY_$site_upper (см. SITES.md, «Деплой»)"
+            exit 1
+          fi
+
+      - name: Download site
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: dist
+
+      - name: Push to ${{ env.TARGET_REPO }}
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ env.DEPLOY_KEY }}
+          external_repository: ${{ env.TARGET_REPO }}
+          publish_branch: gh-pages
+          publish_dir: dist
+          cname: ${{ needs.build.outputs.domain }}
+          force_orphan: true
+          commit_message: "Deploy ${{ env.SITE }} from ${{ github.sha }}"
