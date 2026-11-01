@@ -1,13 +1,10 @@
 # Настройки сообщества Piter QA. Что значит каждое поле — см. SITES.md.
-#
-# ЗАГОТОВКА: домен, ссылки на соцсети и логотип ниже — предположения, их
-# нужно сверить с реальными каналами сообщества до первого деплоя.
 
 title: "Piter QA"
 brand: "PiterQA"
 description: "QA-сообщество Санкт-Петербурга — митапы по тестированию"
 
-url: "https://piterqa.ru"          # TODO: уточнить домен
+url: "https://piterqa.ru"
 domain: "piterqa.ru"
 
 city: "Санкт-Петербург"
@@ -17,8 +14,8 @@ city_prepositional: "Санкт-Петербурге"
 since: 2026                         # TODO: год основания
 
 links:
-  telegram: ""                      # TODO: например https://t.me/piterqa
+  telegram: "https://t.me/piterqa"
   youtube: ""
-  timepad: ""                       # TODO: например https://piterqa.timepad.ru
+  timepad: "https://piter-qa.timepad.ru"
 
 timepad_org_id: ""

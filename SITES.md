@@ -7,7 +7,7 @@
 | Сообщество | Папка            | Адрес              | Деплой                      |
 |------------|------------------|--------------------|-----------------------------|
 | Moscow QA  | `sites/moscowqa` | https://moscowqa.ru | GitHub Pages этого репозитория |
-| Piter QA   | `sites/piterqa`  | https://piterqa.ru (уточнить) | пока не настроен, см. «Деплой» |
+| Piter QA   | `sites/piterqa`  | https://piterqa.ru | пока не настроен, см. «Деплой» |
 
 ## Что где лежит
 
