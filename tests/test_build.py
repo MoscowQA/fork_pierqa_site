@@ -16,6 +16,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import build  # noqa: E402
+import sites  # noqa: E402
 
 
 # --- Слаги ----------------------------------------------------------------
@@ -359,8 +360,10 @@ class TestTags:
 class TestSpeakerPhotoVariants:
     @pytest.fixture
     def photos(self, tmp_path, monkeypatch):
+        # Картинки сообщества лежат в sites/{id}/static/, а не в общем static/.
         monkeypatch.setattr(build, "ROOT", tmp_path)
-        directory = tmp_path / "static" / "images" / "speakers"
+        monkeypatch.setattr(build, "SITE", sites.Site("test", tmp_path / "site"))
+        directory = tmp_path / "site" / "static" / "images" / "speakers"
         directory.mkdir(parents=True)
         return directory
 
@@ -574,8 +577,10 @@ class TestEventCoverVariants:
 
     @pytest.fixture
     def covers(self, tmp_path, monkeypatch):
+        # Картинки сообщества лежат в sites/{id}/static/, а не в общем static/.
         monkeypatch.setattr(build, "ROOT", tmp_path)
-        directory = tmp_path / "static" / "images" / "events"
+        monkeypatch.setattr(build, "SITE", sites.Site("test", tmp_path / "site"))
+        directory = tmp_path / "site" / "static" / "images" / "events"
         directory.mkdir(parents=True)
         return directory
 

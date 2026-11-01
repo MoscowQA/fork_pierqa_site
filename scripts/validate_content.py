@@ -10,13 +10,17 @@
   **каждое имя в `talks[].speakers` дословно совпадает с `name` спикера**
   (иначе доклад молча не свяжется с профилем);
 * спикеры — уникальные имена, фото лежит у нас и оба варианта на месте;
-* собранный `dist/` — внутренние ссылки ведут на существующие страницы,
-  а `fonts.css` ссылается на наши woff2, а не на чужой CDN.
+* собранный `dist/{id}/` — внутренние ссылки ведут на существующие
+  страницы, а `fonts.css` ссылается на наши woff2, а не на чужой CDN.
+
+Каждое сообщество из `sites/` проверяется отдельно: имя спикера в докладе
+Piter QA должно найтись среди спикеров Piter QA, а не Moscow QA.
 
 Ошибки (`ОШИБКА`) роняют проверку, замечания (`ВНИМАНИЕ`) — нет.
 
 Usage:
-    python3 scripts/validate_content.py
+    python3 scripts/validate_content.py              # все сообщества
+    python3 scripts/validate_content.py piterqa      # одно
     python3 scripts/validate_content.py --no-links   # без проверки dist/
 """
 
@@ -32,10 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import build  # noqa: E402
-
-EVENTS_DIR = ROOT / "content" / "events"
-SPEAKERS_DIR = ROOT / "content" / "speakers"
-DIST_DIR = ROOT / "dist"
+import sites  # noqa: E402
 
 EVENT_TYPES = {"Offline", "Online", "Offline + Online"}
 LINK_FIELDS = ("registration_link", "video_link", "photos_link")
@@ -69,14 +70,14 @@ def front_matter(path: Path) -> dict:
     return data
 
 
-def check_speakers() -> dict[str, dict]:
+def check_speakers(site: sites.Site) -> dict[str, dict]:
     """Проверить профили спикеров и вернуть их по имени."""
     by_name: dict[str, dict] = {}
-    for path in sorted(SPEAKERS_DIR.glob("*.md")):
+    for path in sorted(site.speakers_dir.glob("*.md")):
         data = front_matter(path)
         if not data:
             continue
-        where = f"content/speakers/{path.name}"
+        where = site.rel(path)
 
         name = (data.get("name") or "").strip()
         if not name:
@@ -92,8 +93,8 @@ def check_speakers() -> dict[str, dict]:
         elif photo.startswith(("http://", "https://")):
             warn(where, f"фото лежит снаружи ({photo}) — прогоните make photos")
         else:
-            full = ROOT / photo.lstrip("/")
-            if not full.exists():
+            full = site.static_path(photo)
+            if full is None:
                 error(where, f"файла фото нет: {photo}")
             else:
                 small = full.with_name(f"{full.stem}-540.webp")
@@ -108,13 +109,14 @@ def check_speakers() -> dict[str, dict]:
     return by_name
 
 
-def check_events(speakers: dict[str, dict]) -> None:
+def check_events(site: sites.Site, speakers: dict[str, dict]) -> int:
     numbers: dict[int, str] = {}
-    for path in sorted(EVENTS_DIR.glob("*.md")):
+    files = sorted(site.events_dir.glob("*.md"))
+    for path in files:
         data = front_matter(path)
         if not data:
             continue
-        where = f"content/events/{path.name}"
+        where = site.rel(path)
 
         if not (data.get("title") or "").strip():
             error(where, "нет обязательного поля title")
@@ -144,7 +146,7 @@ def check_events(speakers: dict[str, dict]) -> None:
             value = (data.get(field) or "").strip()
             if not value:
                 continue
-            if not (ROOT / value.lstrip("/")).exists():
+            if site.static_path(value) is None:
                 error(where, f"{field}: файла нет — {value}")
             elif not build.event_cover_variants(value)["sources"]:
                 # Не ошибка: сайт соберётся и с одним JPEG, просто отдаст
@@ -156,10 +158,12 @@ def check_events(speakers: dict[str, dict]) -> None:
             if value and not value.startswith(("http://", "https://")):
                 error(where, f"{field} должно быть полной ссылкой: {value!r}")
 
-        check_talks(where, data, speakers)
+        check_talks(where, data, speakers, site)
+    return len(files)
 
 
-def check_talks(where: str, event: dict, speakers: dict[str, dict]) -> None:
+def check_talks(where: str, event: dict, speakers: dict[str, dict],
+                site: sites.Site) -> None:
     slugs: dict[str, str] = {}
     for talk in event.get("talks") or []:
         if not isinstance(talk, dict):
@@ -189,7 +193,7 @@ def check_talks(where: str, event: dict, speakers: dict[str, dict]) -> None:
                 error(
                     where,
                     f"«{name}» (доклад «{title}») не совпадает ни с одним name "
-                    f"в content/speakers/ — доклад не свяжется с профилем",
+                    f"в {site.rel(site.speakers_dir)}/ — доклад не свяжется с профилем",
                 )
 
         for tag in talk.get("tags") or []:
@@ -227,21 +231,22 @@ def resolves(dist: Path, url: str) -> bool:
 
 
 def check_links(dist: Path) -> None:
+    label = sites.rel(dist)
     if not dist.exists():
-        warn("dist/", "нет сборки — проверка ссылок пропущена (сначала make build)")
+        warn(f"{label}/", "нет сборки — проверка ссылок пропущена (сначала make build)")
         return
 
     for page in sorted(dist.rglob("*.html")):
         collector = LinkCollector()
         collector.feed(page.read_text(encoding="utf-8"))
-        where = str(page.relative_to(dist))
+        where = f"{label}/{page.relative_to(dist)}"
         for link in sorted(collector.links):
             # Наружу, якоря, почта и протокол-относительные — не наша забота.
             if not link.startswith("/") or link.startswith("//"):
                 continue
             target = re.split(r"[?#]", link, maxsplit=1)[0]
             if target and not resolves(dist, target):
-                error(f"dist/{where}", f"битая внутренняя ссылка: {link}")
+                error(where, f"битая внутренняя ссылка: {link}")
 
 
 def check_fonts(dist: Path) -> None:
@@ -252,36 +257,49 @@ def check_fonts(dist: Path) -> None:
     видна только в консоли браузера — страница молча съезжает на фолбэк.
     """
     css = dist / "static" / "css" / "fonts.css"
+    where = sites.rel(css)
     if not css.is_file():
-        error("dist/static/css/fonts.css", "не собрался (нужен make fonts)")
+        error(where, "не собрался (нужен make fonts)")
         return
 
     urls = re.findall(r"url\(['\"]?([^'\")]+)['\"]?\)", css.read_text(encoding="utf-8"))
     if not urls:
-        error("dist/static/css/fonts.css", "нет ни одного @font-face с url()")
+        error(where, "нет ни одного @font-face с url()")
         return
 
     for url in sorted(set(urls)):
         if url.startswith(("http://", "https://", "//")):
-            error("dist/static/css/fonts.css",
-                  f"шрифт грузится со стороны, а должен лежать у нас: {url}")
+            error(where, f"шрифт грузится со стороны, а должен лежать у нас: {url}")
         elif not (css.parent / url).resolve().is_file():
-            error("dist/static/css/fonts.css", f"нет файла шрифта: {url}")
+            error(where, f"нет файла шрифта: {url}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("sites", nargs="*",
+                        help="какие сообщества проверить (по умолчанию все)")
     parser.add_argument("--no-links", action="store_true",
-                        help="Не проверять ссылки в собранном dist/")
-    parser.add_argument("--dist", type=Path, default=DIST_DIR,
-                        help="Где лежит сборка (по умолчанию dist/)")
+                        help="Не проверять ссылки в собранном dist/{id}/")
+    parser.add_argument("--dist", type=Path, default=None,
+                        help="Где лежит сборка (по умолчанию dist/{id}/; "
+                             "только вместе с одним сообществом)")
     args = parser.parse_args()
 
-    speakers = check_speakers()
-    check_events(speakers)
-    if not args.no_links:
-        check_links(args.dist)
-        check_fonts(args.dist)
+    selected = sites.resolve_sites(args.sites)
+    if args.dist and len(selected) != 1:
+        parser.error("--dist имеет смысл только для одного сообщества")
+
+    summary = []
+    for site in selected:
+        # Функции build.py (обложки, фото) ищут файлы в static/ сообщества.
+        build.configure(site)
+        speakers = check_speakers(site)
+        event_count = check_events(site, speakers)
+        if not args.no_links:
+            dist = args.dist or site.output_dir
+            check_links(dist)
+            check_fonts(dist)
+        summary.append(f"{site.id}: {event_count} событий, {len(speakers)} спикеров")
 
     for line in warnings:
         print(line)
@@ -289,8 +307,7 @@ def main() -> None:
         print(line, file=sys.stderr)
 
     print(
-        f"\nПроверено: {len(list(EVENTS_DIR.glob('*.md')))} событий, "
-        f"{len(speakers)} спикеров. "
+        f"\nПроверено — {'; '.join(summary)}. "
         f"Ошибок: {len(errors)}, замечаний: {len(warnings)}."
     )
     sys.exit(1 if errors else 0)

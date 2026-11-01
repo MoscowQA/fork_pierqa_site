@@ -2,7 +2,7 @@
 {% set active_page = 'speakers' %}
 
 {% block title %}{{ speaker.name }} — Профиль спикера — {{ site.title }}{% endblock %}
-{% block description %}{{ speaker.name }}{% if speaker.company %}, {{ speaker.company }}{% endif %} — профиль спикера сообщества Moscow QA{% endblock %}
+{% block description %}{{ speaker.name }}{% if speaker.company %}, {{ speaker.company }}{% endif %} — профиль спикера сообщества {{ site.title }}{% endblock %}
 {% block og_type %}profile{% endblock %}
 {% block og_image %}{% if speaker.photo %}<meta property="og:image" content="{{ speaker.photo_variants.absolute }}">{% endif %}{% endblock %}
 
@@ -109,7 +109,7 @@
             {% if speaker_talks %}
             <div class="speaker-stats__item">
                 <span class="speaker-stats__number">{{ speaker_talks | length }}</span>
-                <span class="speaker-stats__label">на Moscow QA</span>
+                <span class="speaker-stats__label">на {{ site.title }}</span>
             </div>
             {% endif %}
             {% if speaker.external_talks | default([], true) | length > 0 %}
@@ -123,7 +123,7 @@
 
         {% if speaker_talks %}
         <section class="section speaker-talks">
-            <h2 class="section__title" style="color: var(--gray-900);">Доклады на Moscow QA</h2>
+            <h2 class="section__title" style="color: var(--gray-900);">Доклады на {{ site.title }}</h2>
             {% for talk in speaker_talks %}
             <div class="talk-item">
                 <div class="talk-item__meta">

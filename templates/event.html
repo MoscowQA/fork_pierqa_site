@@ -9,8 +9,8 @@
 {% set tp_mode = event.timepad_widget_mode | default('off') if site.timepad_widget.enabled else 'off' %}
 {% set tp_url = site.timepad ~ '/event/' ~ event.timepad_event_id ~ '/' if event.timepad_event_id else '' %}
 
-{% block title %}{{ event.title }} — митап по тестированию в Москве — {{ site.title }}{% endblock %}
-{% block description %}{{ event.short_description | default(event.title ~ ' — митап по тестированию в Москве от сообщества Moscow QA, ' ~ event.date) }}{% endblock %}
+{% block title %}{{ event.title }} — митап по тестированию в {{ site.city_prepositional }} — {{ site.title }}{% endblock %}
+{% block description %}{{ event.short_description | default(event.title ~ ' — митап по тестированию в ' ~ site.city_prepositional ~ ' от сообщества ' ~ site.title ~ ', ' ~ event.date) }}{% endblock %}
 {% block og_type %}article{% endblock %}
 {# Своя обложка события важнее нарисованной: её рисовали под конкретную
    активность. Если её нет, сборка кладёт сюда карточку из og_images.py —
@@ -138,7 +138,7 @@
                         <div class="calendar-links">
                             <a class="btn btn--secondary btn--sm"
                                href="{{ base }}/events/{{ event.slug }}/event.ics"
-                               download="moscowqa-{{ event.slug }}.ics">Скачать .ics</a>
+                               download="{{ site.id }}-{{ event.slug }}.ics">Скачать .ics</a>
                             <a class="btn btn--secondary btn--sm"
                                href="{{ event.google_calendar_url }}"
                                target="_blank" rel="noopener">Google Календарь</a>

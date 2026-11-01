@@ -41,5 +41,8 @@ jobs:
       - name: Build
         run: make check
 
+      # build.py и validate_content.py без аргументов проходят по всем
+      # сообществам из sites/ — сломанный контент Piter QA роняет CI так же,
+      # как сломанный Moscow QA, хотя деплоится пока только Moscow QA.
       - name: Validate content and links
         run: python3 scripts/validate_content.py

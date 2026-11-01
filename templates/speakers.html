@@ -2,7 +2,7 @@
 {% set active_page = 'speakers' %}
 
 {% block title %}Докладчики — {{ site.title }}{% endblock %}
-{% block description %}Спикеры сообщества Moscow QA: {{ speakers | length }} докладчиков — профили, доклады, слайды и записи выступлений{% endblock %}
+{% block description %}Спикеры сообщества {{ site.title }}: {{ speakers | length }} докладчиков — профили, доклады, слайды и записи выступлений{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
@@ -43,7 +43,7 @@
         <p class="text-muted speakers-count"
            data-speakers-count
            data-speakers-total="{{ speakers | length }}"
-           aria-live="polite">{{ speakers | length }} спикеров Moscow QA</p>
+           aria-live="polite">{{ speakers | length }} спикеров {{ site.title }}</p>
 
         <div class="speakers-grid" data-speakers-grid>
             {% for speaker in speakers %}

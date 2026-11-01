@@ -2,7 +2,7 @@
 {% set active_page = 'tags' %}
 
 {% block title %}Доклады по теме «{{ tag.name }}» — {{ site.title }}{% endblock %}
-{% block description %}{{ tag.talks | length }} докладов митапов Moscow QA по теме «{{ tag.name }}» — с описаниями, спикерами и ссылками на записи{% endblock %}
+{% block description %}{{ tag.talks | length }} докладов митапов {{ site.title }} по теме «{{ tag.name }}» — с описаниями, спикерами и ссылками на записи{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
@@ -29,7 +29,7 @@
 <main class="main">
     <div class="container">
         <h1 class="section__title">{{ tag.name }}</h1>
-        <p class="text-muted">{{ tag.talks | length }} докладов на митапах Moscow QA</p>
+        <p class="text-muted">{{ tag.talks | length }} докладов на митапах {{ site.title }}</p>
 
         <div class="talks-grid">
             {% for talk in tag.talks %}

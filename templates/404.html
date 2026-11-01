@@ -5,7 +5,7 @@
    break as soon as the missing URL sits deeper than the site root. #}
 
 {% block title %}Страница не найдена — {{ site.title }}{% endblock %}
-{% block description %}Такой страницы на сайте Moscow QA нет — возможно, ссылка устарела. Загляните в список митапов или к докладчикам.{% endblock %}
+{% block description %}Такой страницы на сайте {{ site.title }} нет — возможно, ссылка устарела. Загляните в список митапов или к докладчикам.{% endblock %}
 
 {% block extra_head %}<meta name="robots" content="noindex">{% endblock %}
 
@@ -22,10 +22,12 @@
             <a href="{{ base }}/speakers/" class="btn btn--secondary">Докладчики</a>
             <a href="{{ base }}/cfp/" class="btn btn--secondary">Подать доклад</a>
         </div>
+        {% if site.telegram %}
         <p class="text-muted" style="margin-top:2.5rem;">
             Если ссылка пришла из наших анонсов и она битая — напишите нам в
             <a href="{{ site.telegram }}" target="_blank" rel="noopener">telegram</a>.
         </p>
+        {% endif %}
     </div>
 </main>
 {% endblock %}

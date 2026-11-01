@@ -2,7 +2,7 @@
 {% set active_page = 'tags' %}
 
 {% block title %}Темы докладов — {{ site.title }}{% endblock %}
-{% block description %}Доклады митапов Moscow QA по темам: {{ tags | map(attribute='name') | join(', ') }}{% endblock %}
+{% block description %}Доклады митапов {{ site.title }} по темам: {{ tags | map(attribute='name') | join(', ') }}{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
@@ -21,7 +21,7 @@
     <div class="container">
         <h1 class="section__title">Темы докладов</h1>
         <p class="text-muted">
-            {{ tags | length }} тем — по ним разложены доклады всех митапов Moscow QA.
+            {{ tags | length }} тем — по ним разложены доклады всех митапов {{ site.title }}.
         </p>
 
         <div class="tag-cloud">

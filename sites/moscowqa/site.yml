@@ -1,0 +1,27 @@
+# Настройки сообщества Moscow QA. Что значит каждое поле — см. SITES.md.
+
+# Как сообщество называется в текстах, заголовках и schema.org.
+title: "Moscow QA"
+# Слово рядом с логотипом в шапке, на карточках событий и на og-обложках.
+brand: "MoscowQA"
+description: "QA-сообщество Москвы — митапы по тестированию"
+
+url: "https://moscowqa.ru"
+domain: "moscowqa.ru"
+
+# Город в трёх формах: «QA Москвы», «митапы в Москве», schema.org areaServed.
+city: "Москва"
+city_genitive: "Москвы"
+city_prepositional: "Москве"
+
+# С какого года сообщество — для подвала «© 2024 — 2026».
+since: 2024
+
+links:
+  telegram: "https://t.me/moscowqa"
+  youtube: "https://www.youtube.com/@moscowqa"
+  timepad: "https://moscowqa.timepad.ru"
+
+# Числовой id организации на Timepad — нужен только виджету-афише
+# (TIMEPAD_LIST_WIDGET=1). Переменная окружения TIMEPAD_ORG_ID важнее.
+timepad_org_id: ""

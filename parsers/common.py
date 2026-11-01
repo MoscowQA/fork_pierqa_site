@@ -1,15 +1,22 @@
 """Shared helpers: load speakers, match names, update .md files."""
 import re
+import sys
 import time
 import yaml
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from sites import load_site, resolve_sites  # noqa: E402,F401 — re-exported for sync_*.py
 
 
 def norm_url(url: str) -> str:
     """Normalize URL for deduplication: lowercase, strip protocol and trailing slash."""
     return re.sub(r"^https?://", "", (url or "").lower()).rstrip("/")
 
-SPEAKERS_DIR = Path(__file__).parent.parent / "content" / "speakers"
+# Спикеры сообщества по умолчанию (SITE из окружения или moscowqa).
+SPEAKERS_DIR = load_site().speakers_dir
 
 HEADERS = {
     "User-Agent": (
@@ -20,10 +27,10 @@ HEADERS = {
 }
 
 
-def load_speakers() -> list[dict]:
+def load_speakers(speakers_dir: Path = None) -> list[dict]:
     """Return list of dicts with speaker data + raw file text."""
     speakers = []
-    for path in sorted(SPEAKERS_DIR.glob("*.md")):
+    for path in sorted((speakers_dir or SPEAKERS_DIR).glob("*.md")):
         text = path.read_text(encoding="utf-8")
         parts = text.split("---", 2)
         if len(parts) >= 3 and parts[0].strip() == "":
