@@ -296,6 +296,20 @@ class TestSeo:
         person = next(d for d in ld_json(speaker) if d["@type"] == "Person")
         assert url in person["sameAs"]
 
+    def test_talks_at_neighbour_are_listed(self, two_sites, capsys):
+        root = two_sites(published=True)
+        write(root / "sites" / "other" / "content" / "events" / "02-other.md",
+              EVENT_MD.replace("Demo QA #1", "Other QA #2")
+                      .replace("Первый доклад", "Доклад у соседей"))
+        build_quiet("demo", capsys)
+        speaker = (root / "dist" / "demo" / "speakers" / "ivan-ivanov" / "index.html").read_text()
+        assert "Доклады на Other QA" in speaker
+        assert 'href="https://other-qa.example/events/02-other/"' in speaker
+        assert "Доклад у соседей" in speaker
+        assert '<span class="speaker-stats__number">2</span>' in speaker
+        listing = (root / "dist" / "demo" / "speakers" / "index.html").read_text()
+        assert "доклад у соседей" in listing
+
     def test_neighbour_links_ignore_site_url_override(self, two_sites, capsys, monkeypatch):
         # SITE_URL подменяет адрес собираемого сайта (стенд), но не соседей.
         root = two_sites(published=True)

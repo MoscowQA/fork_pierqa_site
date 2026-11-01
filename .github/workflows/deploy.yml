@@ -40,7 +40,7 @@ jobs:
 
       # В репозитории несколько сообществ (sites/), а GitHub Pages у
       # репозитория одна — сюда выкладывается Moscow QA, dist/moscowqa/.
-      # Как выкладывать остальные, см. SITES.md, раздел «Деплой».
+      # Остальные выкладываются из своих репозиториев, см. SITES.md, «Деплой».
       - name: Build site
         run: python build.py moscowqa
 

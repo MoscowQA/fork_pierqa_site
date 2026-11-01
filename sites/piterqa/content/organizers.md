@@ -3,7 +3,9 @@ title: "Организаторы"
 updated: "2026-11-01"
 meta_description: "Организаторы и программный комитет сообщества Piter QA — кто делает митапы по тестированию в Санкт-Петербурге"
 # Имена — как в sites/piterqa/content/speakers/*.md, тогда подтянутся фото и профиль.
-organizers: []
+organizers:
+  - name: Александр Михайлов
+  - name: Анна Мишанина
 program_committee: []
 ---
 

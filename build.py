@@ -1007,17 +1007,49 @@ def generate_sitemap(events, speakers, pages, tags=(), exclude=()):
     return "\n".join(lines)
 
 
+def community_talks_by_speaker(other: "sites.Site") -> dict[str, list[dict]]:
+    """Имя спикера → его доклады на митапах другого сообщества.
+
+    Ссылки абсолютные, на домен соседа: страницы доклада и события живут
+    там. Свежие сверху, как и доклады своего сообщества.
+    """
+    base = other.config["url"].rstrip("/")
+    events = [
+        {**parse_md_file(path), "slug": path.stem}
+        for path in other.events_dir.glob("*.md")
+    ]
+    events.sort(key=lambda e: str(e.get("date", "")), reverse=True)
+
+    talks: dict[str, list[dict]] = {}
+    for event in events:
+        event_url = f"{base}/events/{event['slug']}/"
+        for talk in event.get("talks") or []:
+            slug = slugify_talk(talk["title"], talk.get("slug"))
+            for name in talk.get("speakers") or []:
+                talks.setdefault(name, []).append({
+                    "title": talk["title"],
+                    "description": talk.get("description") or "",
+                    "url": f"{event_url}talks/{slug}/",
+                    "event_title": event.get("title", ""),
+                    "event_url": event_url,
+                    "date": str(event.get("date", "")),
+                })
+    return talks
+
+
 def speaker_profiles_elsewhere(site: "sites.Site") -> dict[str, list[dict]]:
-    """Имя спикера → его профили у других опубликованных сообществ."""
+    """Имя спикера → его профили и доклады у других опубликованных сообществ."""
     found: dict[str, list[dict]] = {}
     for other in sites.other_communities(site.id):
         base = other.config["url"].rstrip("/")
+        talks = community_talks_by_speaker(other)
         for path in sorted(other.speakers_dir.glob("*.md")):
             name = str(parse_md_file(path).get("name") or "").strip()
             if name:
                 found.setdefault(name, []).append({
                     "community": other.config["title"],
                     "url": f"{base}/speakers/{path.stem}/",
+                    "talks": talks.get(name, []),
                 })
     return found
 
@@ -1130,21 +1162,24 @@ def build(site: "sites.Site | str | None" = None):
     # Talks per speaker: used both by the individual speaker pages and by the
     # search index of the speakers list.
     talks_by_speaker = build_talks_by_speaker(events)
-    for speaker in speakers:
-        speaker["search_text"] = speaker_search_text(
-            speaker, talks_by_speaker.get(speaker["name"], [])
-        )
 
-    # Topic tags: talks grouped by the `tags` of their front matter.
-    tags = collect_tags(events)
-
-    # Тот же человек у соседнего сообщества: ссылка «Также выступает на…» и
-    # schema.org sameAs. Профили на двух доменах — не дубль, а две стороны
-    # одного человека, и разметка говорит об этом прямо.
+    # Тот же человек у соседнего сообщества: ссылка «Также выступает на…»,
+    # его доклады там и schema.org sameAs. Профили на двух доменах — не
+    # дубль, а две стороны одного человека, и разметка говорит об этом прямо.
     elsewhere = speaker_profiles_elsewhere(site)
     for speaker in speakers:
         speaker["elsewhere"] = elsewhere.get(speaker["name"], [])
         speaker["same_as"] = speaker_same_as(speaker)
+        # Доклады у соседей тоже ищутся: поиск по теме находит спикера,
+        # даже если здесь он рассказывал о другом.
+        speaker["search_text"] = speaker_search_text(
+            speaker,
+            talks_by_speaker.get(speaker["name"], [])
+            + [t for p in speaker["elsewhere"] for t in p["talks"]],
+        )
+
+    # Topic tags: talks grouped by the `tags` of their front matter.
+    tags = collect_tags(events)
 
     # Link-preview covers. An event with its own `cover` keeps it; the rest
     # get a card drawn from their front matter, and `event["og_image"]` is

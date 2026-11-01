@@ -7,7 +7,7 @@
 | Сообщество | Папка            | Адрес              | Деплой                      |
 |------------|------------------|--------------------|-----------------------------|
 | Moscow QA  | `sites/moscowqa` | https://moscowqa.ru | GitHub Pages этого репозитория |
-| Piter QA   | `sites/piterqa`  | https://piterqa.ru | пока не настроен, см. «Деплой» |
+| Piter QA   | `sites/piterqa`  | https://piterqa.ru | `MoscowQA/fork_pierqa_site`, см. «Деплой» |
 
 ## Что где лежит
 
@@ -113,15 +113,36 @@ CI (`.github/workflows/ci.yml`) подхватит новое сообществ
 
 ## Деплой
 
-`.github/workflows/deploy.yml` собирает и выкладывает на GitHub Pages только
-`dist/moscowqa/` — у репозитория одна Pages. Для Piter QA варианты:
+Pages у репозитория одна, и в этом репозитории на ней moscowqa.ru:
+`.github/workflows/deploy.yml` на каждый пуш в `main`, по ночам и по кнопке
+собирает и выкладывает `dist/moscowqa/`.
 
-* **Отдельный репозиторий под Pages** (например, `piterqa_site`): workflow
-  здесь собирает `dist/piterqa/` и пушит его в ветку `gh-pages` того
-  репозитория (нужен deploy key или токен в секретах). Контент остаётся
-  здесь, домен настраивается в том репозитории.
-* **Другой хостинг** (Netlify, Cloudflare Pages, свой сервер): тот же шаг
-  сборки `python build.py piterqa`, публикуется папка `dist/piterqa/`.
+Остальные сообщества выкладываются из своих репозиториев — они только под
+Pages. Workflow там сам забирает этот репозиторий (он публичный, ключи и
+токены не нужны), собирает своё сообщество и выкладывает на свои Pages.
+Шаблон этого workflow — [`deploy/community-pages.yml`](./deploy/community-pages.yml).
+
+| Сообщество | Репозиторий Pages | Домен |
+|------------|-------------------|-------|
+| Piter QA   | [`MoscowQA/fork_pierqa_site`](https://github.com/MoscowQA/fork_pierqa_site) | piterqa.ru |
+
+Выложить вручную: в репозитории сообщества Actions → Build and Deploy → Run
+workflow. В поле `ref` можно указать ветку этого репозитория — например,
+чтобы посмотреть на сайте ещё не влитые правки. Без него собирается `main`,
+и ночная пересборка тоже идёт из `main`: правки контента Piter QA попадают на
+piterqa.ru после мержа сюда, к ближайшей ночи или по кнопке.
+
+Новое сообщество:
+
+1. Завести репозиторий под сайт.
+2. Положить в него `deploy/community-pages.yml` как
+   `.github/workflows/deploy.yml`, поменять `SITE`.
+3. Settings → Pages → Source: **GitHub Actions**, указать домен; DNS домена
+   направить на GitHub Pages.
+4. Запустить workflow вручную.
+
+Пушить отсюда в чужой репозиторий нельзя: в организации MoscowQA отключены
+deploy keys, а токен пришлось бы продлевать.
 
 Ночная пересборка нужна каждому сообществу: прошедшее/предстоящее считается
 на сборке.
