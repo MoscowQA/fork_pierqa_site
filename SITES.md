@@ -7,7 +7,7 @@
 | Сообщество | Папка            | Адрес              | Деплой                      |
 |------------|------------------|--------------------|-----------------------------|
 | Moscow QA  | `sites/moscowqa` | https://moscowqa.ru | GitHub Pages этого репозитория |
-| Piter QA   | `sites/piterqa`  | https://piterqa.ru | вручную в свой репозиторий, см. «Деплой» |
+| Piter QA   | `sites/piterqa`  | https://piterqa.ru | `MoscowQA/fork_pierqa_site`, см. «Деплой» |
 
 ## Что где лежит
 
@@ -113,29 +113,36 @@ CI (`.github/workflows/ci.yml`) подхватит новое сообществ
 
 ## Деплой
 
-`.github/workflows/deploy.yml`. Пуш в `main` и ночная пересборка выкладывают
-Moscow QA (`dist/moscowqa/`) на GitHub Pages этого репозитория. Любое
-сообщество можно выложить руками: **Actions → Build and Deploy → Run
-workflow**, в списке `site` выбрать сообщество.
+Pages у репозитория одна, и в этом репозитории на ней moscowqa.ru:
+`.github/workflows/deploy.yml` на каждый пуш в `main`, по ночам и по кнопке
+собирает и выкладывает `dist/moscowqa/`.
 
-Pages у репозитория одна, и на ней moscowqa.ru, поэтому остальные
-сообщества уезжают в свои репозитории: workflow собирает `dist/{id}/` и
-пушит его в ветку `gh-pages` репозитория сообщества, с `CNAME` из `domain`
-в `site.yml`. Чтобы это заработало для сообщества `{id}` (например,
-`piterqa`):
+Остальные сообщества выкладываются из своих репозиториев — они только под
+Pages. Workflow там сам забирает этот репозиторий (он публичный, ключи и
+токены не нужны), собирает своё сообщество и выкладывает на свои Pages.
+Шаблон этого workflow — [`deploy/community-pages.yml`](./deploy/community-pages.yml).
 
-1. Завести репозиторий под сайт (например, `MoscowQA/piterqa_site`).
-2. Сгенерировать ключ: `ssh-keygen -t ed25519 -N "" -f deploy_key`.
-   Публичный `deploy_key.pub` — в тот репозиторий, Settings → Deploy keys,
-   с галкой **Allow write access**.
-3. Здесь, Settings → Secrets and variables → Actions:
-   * переменная `PAGES_REPO_PITERQA` = `MoscowQA/piterqa_site`;
-   * секрет `DEPLOY_KEY_PITERQA` = содержимое приватного `deploy_key`.
-4. Запустить workflow с `site: piterqa`. В том репозитории — Settings →
-   Pages → Deploy from a branch → `gh-pages`, домен подхватится из `CNAME`.
-   DNS домена направить на GitHub Pages.
+| Сообщество | Репозиторий Pages | Домен |
+|------------|-------------------|-------|
+| Piter QA   | [`MoscowQA/fork_pierqa_site`](https://github.com/MoscowQA/fork_pierqa_site) | piterqa.ru |
 
-Новое сообщество надо ещё добавить в список `options` в `deploy.yml`.
+Выложить вручную: в репозитории сообщества Actions → Build and Deploy → Run
+workflow. В поле `ref` можно указать ветку этого репозитория — например,
+чтобы посмотреть на сайте ещё не влитые правки. Без него собирается `main`,
+и ночная пересборка тоже идёт из `main`: правки контента Piter QA попадают на
+piterqa.ru после мержа сюда, к ближайшей ночи или по кнопке.
+
+Новое сообщество:
+
+1. Завести репозиторий под сайт.
+2. Положить в него `deploy/community-pages.yml` как
+   `.github/workflows/deploy.yml`, поменять `SITE`.
+3. Settings → Pages → Source: **GitHub Actions**, указать домен; DNS домена
+   направить на GitHub Pages.
+4. Запустить workflow вручную.
+
+Пушить отсюда в чужой репозиторий нельзя: в организации MoscowQA отключены
+deploy keys, а токен пришлось бы продлевать.
 
 Ночная пересборка нужна каждому сообществу: прошедшее/предстоящее считается
 на сборке.
