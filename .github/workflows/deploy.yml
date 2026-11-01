@@ -23,6 +23,14 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# Какой сайт выкладывать на Pages этого репозитория — переменная TARGET
+# (Settings → Secrets and variables → Actions → Variables): домен из
+# sites/*/site.yml. Файл один на все репозитории сообществ: у moscowqa_site
+# TARGET=moscowqa.ru, у его форка под Piter QA — piterqa.ru. Форк
+# синхронизируется с этим репозиторием, поэтому своего deploy.yml у него нет.
+env:
+  TARGET: ${{ vars.TARGET || 'moscowqa.ru' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -38,11 +46,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # В репозитории несколько сообществ (sites/), а GitHub Pages у
-      # репозитория одна — сюда выкладывается Moscow QA, dist/moscowqa/.
-      # Остальные выкладываются из своих репозиториев, см. SITES.md, «Деплой».
+      - name: Find site for ${{ env.TARGET }}
+        run: |
+          SITE=$(python -c '
+          import os, sys, sites
+          target = os.environ["TARGET"]
+          found = [s for s in sites.available_sites() if sites.load_site(s).domain == target]
+          sys.exit(f"Нет сообщества с domain: {target} в sites/*/site.yml") if not found else print(found[0])
+          ')
+          echo "SITE=$SITE" >> "$GITHUB_ENV"
+          echo "$TARGET → sites/$SITE"
+
       - name: Build site
-        run: python build.py moscowqa
+        run: python build.py "$SITE"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -50,7 +66,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/moscowqa
+          path: dist/${{ env.SITE }}
 
   deploy:
     environment:
